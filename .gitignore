@@ -1,6 +1,8 @@
 # Data files
 data/raw/
 data/processed/
+data/news/
+data/sentiment/
 *.csv
 *.parquet
 

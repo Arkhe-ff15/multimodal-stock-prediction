@@ -2,26 +2,50 @@
   "success": true,
   "by_symbol": {
     "AAPL": {
-      "error": "no_news_articles"
+      "total_articles": 13,
+      "avg_sentiment": 0.11183078013933621,
+      "avg_confidence": 0.7673828235039344,
+      "positive_ratio": 0.5384615384615384,
+      "negative_ratio": 0.38461538461538464
     },
     "MSFT": {
-      "error": "no_news_articles"
+      "total_articles": 13,
+      "avg_sentiment": 0.23350339898696312,
+      "avg_confidence": 0.8246257442694443,
+      "positive_ratio": 0.6153846153846154,
+      "negative_ratio": 0.3076923076923077
     },
     "GOOGL": {
-      "error": "no_news_articles"
+      "total_articles": 13,
+      "avg_sentiment": 0.14808470010757446,
+      "avg_confidence": 0.7100279514606183,
+      "positive_ratio": 0.6153846153846154,
+      "negative_ratio": 0.3076923076923077
     },
     "AMZN": {
-      "error": "no_news_articles"
+      "total_articles": 13,
+      "avg_sentiment": -0.015546674911792461,
+      "avg_confidence": 0.7277823961698092,
+      "positive_ratio": 0.38461538461538464,
+      "negative_ratio": 0.46153846153846156
     },
     "TSLA": {
-      "error": "no_news_articles"
+      "total_articles": 13,
+      "avg_sentiment": 0.05260791457616366,
+      "avg_confidence": 0.7535231709480286,
+      "positive_ratio": 0.46153846153846156,
+      "negative_ratio": 0.5384615384615384
     }
   },
   "quality_report": {
-    "error": "No texts processed yet"
+    "total_processed": 115,
+    "low_confidence_rate": 0.43478260869565216,
+    "low_relevance_rate": 0.43478260869565216,
+    "avg_processing_time": 0.014178713043478262,
+    "processing_speed": 70.52826282142489
   },
-  "total_features": 0,
-  "processing_time_seconds": 1.672065,
-  "symbols_processed": 0,
-  "total_articles_analyzed": 0
+  "total_features": 28,
+  "processing_time_seconds": 11.909234,
+  "symbols_processed": 5,
+  "total_articles_analyzed": 65
 }

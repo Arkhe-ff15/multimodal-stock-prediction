@@ -3,11 +3,11 @@
   "total_rows": 6820,
   "total_features": 88,
   "symbols": [
-    "MSFT",
-    "TSLA",
     "AAPL",
-    "GOOGL",
-    "AMZN"
+    "TSLA",
+    "MSFT",
+    "AMZN",
+    "GOOGL"
   ],
   "sectors": [
     "Technology"
@@ -18,12 +18,12 @@
   },
   "market_data_sources": 5,
   "news_sources": [
-    "yahoo_finance",
-    "mock_historical"
+    "mock_historical",
+    "yahoo_finance"
   ],
   "total_news_articles": 115,
-  "avg_news_per_day": 0.05439882697947214,
-  "processing_time_seconds": 7.753804,
+  "avg_news_per_day": 0.05410557184750733,
+  "processing_time_seconds": 11.032373,
   "missing_values": "0",
   "target_variables": [
     "target_5d",

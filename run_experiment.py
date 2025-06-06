@@ -1,8 +1,9 @@
 """
-run_experiment.py - FIXED & COMPLETE VERSION
+run_experiment.py - COMPLETE FIXED VERSION
 
 Enhanced experiment runner for Multi-Horizon Sentiment-Enhanced TFT
 Fixed compatibility with enhanced data_loader and improved error handling
+INCLUDES ALL METHODS AND FIXES
 """
 
 import argparse
@@ -275,6 +276,124 @@ class ExperimentRunner:
             'random_seed': 42
         }
     
+    # ✅ FIXED: Add missing class methods for data persistence
+    def _save_news_data(self, news_data: Dict, filename: str = "news_data.pkl"):
+        """Save news data to disk for reloading in subsequent steps"""
+        news_file = Path("data/news") / filename
+        try:
+            # Ensure directory exists
+            news_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(news_file, 'wb') as f:
+                pickle.dump(news_data, f)
+            logger.info(f"✅ News data saved to {news_file}")
+            
+            # Also save a summary JSON for debugging
+            summary_file = news_file.with_suffix('.json')
+            summary = {
+                'timestamp': datetime.now().isoformat(),
+                'symbols': list(news_data.keys()),
+                'article_counts': {symbol: len(articles) for symbol, articles in news_data.items()},
+                'total_articles': sum(len(articles) for articles in news_data.values())
+            }
+            
+            with open(summary_file, 'w') as f:
+                json.dump(summary, f, indent=2)
+            logger.info(f"✅ News data summary saved to {summary_file}")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Could not save news data: {e}")
+
+    def _load_news_data(self, filename: str = "news_data.pkl") -> Optional[Dict]:
+        """Load news data from disk"""
+        news_file = Path("data/news") / filename
+        
+        if not news_file.exists():
+            logger.warning(f"❌ News data file not found: {news_file}")
+            return None
+            
+        try:
+            with open(news_file, 'rb') as f:
+                news_data = pickle.load(f)
+            
+            total_articles = sum(len(articles) for articles in news_data.values())
+            logger.info(f"✅ News data loaded from {news_file}")
+            logger.info(f"   Loaded {total_articles} articles across {len(news_data)} symbols")
+            
+            # Log summary by symbol
+            for symbol, articles in news_data.items():
+                if articles:
+                    sources = set(getattr(a, 'source', 'unknown') for a in articles)
+                    logger.info(f"   {symbol}: {len(articles)} articles from {len(sources)} sources")
+                else:
+                    logger.info(f"   {symbol}: No articles")
+            
+            return news_data
+            
+        except Exception as e:
+            logger.error(f"❌ Could not load news data: {e}")
+            return None
+
+    def _load_previous_results(self, current_step: str):
+        """Load results from previous steps if available"""
+        try:
+            # Try to load combined dataset from Step 1
+            if current_step in ['2', '3', '4', '5', '6']:
+                dataset_path = Path("data/processed/combined_dataset.parquet")
+                if dataset_path.exists():
+                    self.combined_dataset = pd.read_parquet(dataset_path)
+                    logger.info(f"✅ Loaded combined dataset: {self.combined_dataset.shape}")
+                else:
+                    logger.warning("❌ No combined dataset found - may need to run Step 1 first")
+            
+            # ✅ FIXED: Try to load news data from Step 1 for steps 2 and 3
+            if current_step in ['2', '3']:
+                self.news_data = self._load_news_data()
+                if not self.news_data:
+                    logger.warning("❌ No news data found - may need to run Step 1 first")
+            
+            # Try to load sentiment features from Step 2
+            if current_step in ['3', '4', '5', '6']:
+                sentiment_path = Path("data/processed/sentiment_features.parquet")
+                if sentiment_path.exists():
+                    self.sentiment_features = pd.read_parquet(sentiment_path)
+                    logger.info(f"✅ Loaded sentiment features: {self.sentiment_features.shape}")
+            
+            # Try to load temporal decay features from Step 3
+            if current_step in ['4', '5', '6']:
+                decay_path = Path("data/processed/temporal_decay_features.parquet")
+                if decay_path.exists():
+                    self.temporal_decay_features = pd.read_parquet(decay_path)
+                    logger.info(f"✅ Loaded temporal decay features: {self.temporal_decay_features.shape}")
+            
+            # Try to load model-ready data from Step 4
+            if current_step in ['5', '6']:
+                model_path = Path("data/processed/model_ready_data.parquet")
+                if model_path.exists():
+                    self.model_data = pd.read_parquet(model_path)
+                    logger.info(f"✅ Loaded model-ready data: {self.model_data.shape}")
+                    
+                    # Recreate feature sets
+                    exclude_columns = ['symbol', 'sector', 'target_5d', 'target_30d', 'target_90d', 
+                                      'return_5d', 'return_30d', 'return_90d']
+                    feature_columns = [col for col in self.model_data.columns if col not in exclude_columns]
+                    
+                    self.feature_sets = {
+                        'numerical_only': [col for col in feature_columns 
+                                         if not any(term in col.lower() for term in ['sentiment', 'news', 'decay'])],
+                        'with_sentiment': [col for col in feature_columns 
+                                         if not any(term in col for term in ['decay_5d', 'decay_30d', 'decay_90d'])],
+                        'full_features': feature_columns,
+                        'lstm_features': [col for col in feature_columns 
+                                        if any(term in col for term in ['Close', 'Volume', 'RSI', 'MACD', 'lag'])]
+                    }
+                    
+                    self.target_columns = [col for col in ['target_5d', 'target_30d', 'target_90d'] 
+                                         if col in self.model_data.columns]
+        
+        except Exception as e:
+            logger.warning(f"⚠️ Could not load some previous results: {e}")
+    
     def step_1_collect_data(self) -> dict:
         """Step 1: Enhanced data collection - FIXED for enhanced data_loader"""
         logger.info("=" * 60)
@@ -335,6 +454,10 @@ class ExperimentRunner:
             except Exception as e:
                 logger.warning(f"News collection failed: {e}, continuing with empty news")
                 news_data = {symbol: [] for symbol in self.config['data']['stocks']}
+            
+            # ✅ FIXED: Save news data for later steps
+            logger.info("Saving news data for subsequent steps...")
+            self._save_news_data(news_data)
             
             # Create combined dataset
             logger.info("Creating combined dataset...")
@@ -420,11 +543,9 @@ class ExperimentRunner:
             }
             self.experiment_results['data_collection'] = error_stats
             return error_stats
-        
-        self._save_news_data(news_data)
     
     def step_2_sentiment_analysis(self) -> dict:
-        """Step 2: Sentiment analysis (if sentiment module available)"""
+        """Step 2: Sentiment analysis (if sentiment module available) - FIXED"""
         logger.info("=" * 60)
         logger.info("STEP 2: SENTIMENT ANALYSIS")
         logger.info("=" * 60)
@@ -433,27 +554,49 @@ class ExperimentRunner:
         
         # Check if sentiment module is available
         if not self.modules_available['sentiment']:
-            logger.warning("Sentiment module not available, skipping sentiment analysis")
-            return {'success': False, 'error': 'Sentiment module not available', 'skipped': True}
+            logger.warning("❌ Sentiment module not available, skipping sentiment analysis")
+            return {
+                'success': False, 
+                'error': 'Sentiment module not available', 
+                'skipped': True,
+                'processing_time_seconds': (datetime.now() - step_start).total_seconds()
+            }
         
-        # Check if we have news data (either in memory or can load from disk)
+        # ✅ FIXED: Check if we have news data (either in memory or can load from disk)
         if not hasattr(self, 'news_data') or not self.news_data:    
-            logger.info("Loading news data from previous step...")
+            logger.info("📥 Loading news data from previous step...")
             self.news_data = self._load_news_data()
     
         if not self.news_data:
-            logger.warning("No news data available, skipping sentiment analysis")
-            return {'success': False, 'error': 'No news data from Step 1', 'skipped': True}
+            logger.warning("❌ No news data available, skipping sentiment analysis")
+            return {
+                'success': False, 
+                'error': 'No news data from Step 1', 
+                'skipped': True,
+                'processing_time_seconds': (datetime.now() - step_start).total_seconds()
+            }
         
         try:
-            # Initialize sentiment analyzer
-            from sentiment import FinBERTSentimentAnalyzer, SentimentConfig
-            sentiment_config = SentimentConfig(
-                batch_size=self.config['sentiment']['batch_size'],
-                confidence_threshold=self.config['sentiment']['confidence_threshold'],
-                relevance_threshold=self.config['sentiment']['relevance_threshold']
-            )
-            self.sentiment_analyzer = FinBERTSentimentAnalyzer(sentiment_config, cache_dir="data/sentiment")
+            # ✅ FIXED: Initialize sentiment analyzer with proper error handling
+            logger.info("🔧 Initializing sentiment analyzer...")
+            try:
+                from sentiment import FinBERTSentimentAnalyzer, SentimentConfig
+                
+                sentiment_config = SentimentConfig(
+                    batch_size=self.config['sentiment']['batch_size'],
+                    confidence_threshold=self.config['sentiment']['confidence_threshold'],
+                    relevance_threshold=self.config['sentiment']['relevance_threshold']
+                )
+                self.sentiment_analyzer = FinBERTSentimentAnalyzer(sentiment_config, cache_dir="data/sentiment")
+                logger.info("✅ Sentiment analyzer initialized successfully")
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize sentiment analyzer: {e}")
+                return {
+                    'success': False,
+                    'error': f'Sentiment analyzer initialization failed: {e}',
+                    'processing_time_seconds': (datetime.now() - step_start).total_seconds()
+                }
             
             sentiment_results = {}
             all_sentiment_data = []
@@ -461,7 +604,7 @@ class ExperimentRunner:
             # Process sentiment for each symbol
             for symbol in self.config['data']['stocks']:
                 if symbol in self.news_data and self.news_data[symbol]:
-                    logger.info(f"Processing sentiment for {symbol}...")
+                    logger.info(f"🔍 Processing sentiment for {symbol}...")
                     
                     try:
                         # Extract sentiment from news articles
@@ -488,7 +631,7 @@ class ExperimentRunner:
                                 'negative_ratio': float((sentiment_df['sentiment_score'] < -0.1).mean())
                             }
                             
-                            logger.info(f"   {symbol}: {len(sentiment_df)} articles analyzed")
+                            logger.info(f"   ✅ {symbol}: {len(sentiment_df)} articles analyzed")
                             
                             # Create visualization if possible
                             try:
@@ -504,14 +647,14 @@ class ExperimentRunner:
                                 logger.debug(f"Could not create sentiment plot for {symbol}: {e}")
                         
                         else:
-                            logger.warning(f"No sentiment data for {symbol}")
+                            logger.warning(f"⚠️ No sentiment data extracted for {symbol}")
                             sentiment_results[symbol] = {'error': 'no_sentiment_data'}
                     
                     except Exception as e:
-                        logger.warning(f"Sentiment processing failed for {symbol}: {e}")
+                        logger.warning(f"❌ Sentiment processing failed for {symbol}: {e}")
                         sentiment_results[symbol] = {'error': str(e)}
                 else:
-                    logger.debug(f"No news articles for {symbol}")
+                    logger.debug(f"📰 No news articles for {symbol}")
                     sentiment_results[symbol] = {'error': 'no_news_articles'}
             
             # Combine sentiment features
@@ -521,7 +664,7 @@ class ExperimentRunner:
                 self.sentiment_features = combined_sentiment_features
                 logger.info(f"✅ Sentiment features created: {combined_sentiment_features.shape}")
             else:
-                logger.warning("No sentiment features extracted")
+                logger.warning("⚠️ No sentiment features extracted")
                 self.sentiment_features = pd.DataFrame()
             
             # Get quality report
@@ -549,7 +692,7 @@ class ExperimentRunner:
             with open(self.results_dir / "step2_results.json", 'w') as f:
                 json.dump(sentiment_stats, f, indent=2, default=str)
             
-            logger.info("✅ STEP 2 COMPLETED")
+            logger.info("✅ STEP 2 COMPLETED SUCCESSFULLY")
             logger.info(f"   Processed: {sentiment_stats['symbols_processed']} symbols")
             logger.info(f"   Articles: {sentiment_stats['total_articles_analyzed']} analyzed")
             logger.info(f"   Features: {sentiment_stats['total_features']} sentiment features created")
@@ -557,7 +700,7 @@ class ExperimentRunner:
             return sentiment_stats
             
         except Exception as e:
-            logger.error(f"❌ STEP 2 ERROR: {e}")
+            logger.error(f"❌ STEP 2 CRITICAL ERROR: {e}")
             logger.error(traceback.format_exc())
             
             error_stats = {
@@ -1303,7 +1446,7 @@ class ExperimentRunner:
         print("="*60)
     
     def run_single_step(self, step: str) -> dict:
-        """Run a single step"""
+        """Run a single step with proper data loading"""
         step_functions = {
             '1': self.step_1_collect_data,
             '2': self.step_2_sentiment_analysis, 
@@ -1316,11 +1459,11 @@ class ExperimentRunner:
         if step not in step_functions:
             raise ValueError(f"Invalid step: {step}")
         
-        logger.info(f"Running Step {step} only...")
+        logger.info(f"🚀 Running Step {step} only...")
         
-        # For steps > 1, we need data from previous steps
+        # ✅ FIXED: For steps > 1, load data from previous steps
         if step != '1':
-            # Try to load previous results
+            logger.info(f"📥 Loading previous results for step {step}...")
             self._load_previous_results(step)
         
         # Run the requested step
@@ -1332,94 +1475,6 @@ class ExperimentRunner:
             json.dump(result, f, indent=2, default=str)
         
         return result
-    
-def _load_previous_results(self, current_step: str):
-    """Load results from previous steps if available"""
-    try:
-        # Try to load combined dataset from Step 1
-        if current_step in ['2', '3', '4', '5', '6']:
-            dataset_path = Path("data/processed/combined_dataset.parquet")
-            if dataset_path.exists():
-                self.combined_dataset = pd.read_parquet(dataset_path)
-                logger.info(f"Loaded combined dataset: {self.combined_dataset.shape}")
-            else:
-                logger.warning("No combined dataset found - may need to run Step 1 first")
-        
-        # FIXED: Try to load news data from Step 1 for steps 2 and 3
-        if current_step in ['2', '3']:
-            self.news_data = self._load_news_data()
-            if not self.news_data:
-                logger.warning("No news data found - may need to run Step 1 first")
-        
-        # Try to load sentiment features from Step 2
-        if current_step in ['3', '4', '5', '6']:
-            sentiment_path = Path("data/processed/sentiment_features.parquet")
-            if sentiment_path.exists():
-                self.sentiment_features = pd.read_parquet(sentiment_path)
-                logger.info(f"Loaded sentiment features: {self.sentiment_features.shape}")
-        
-        # Try to load temporal decay features from Step 3
-        if current_step in ['4', '5', '6']:
-            decay_path = Path("data/processed/temporal_decay_features.parquet")
-            if decay_path.exists():
-                self.temporal_decay_features = pd.read_parquet(decay_path)
-                logger.info(f"Loaded temporal decay features: {self.temporal_decay_features.shape}")
-        
-        # Try to load model-ready data from Step 4
-        if current_step in ['5', '6']:
-            model_path = Path("data/processed/model_ready_data.parquet")
-            if model_path.exists():
-                self.model_data = pd.read_parquet(model_path)
-                logger.info(f"Loaded model-ready data: {self.model_data.shape}")
-                
-                # Recreate feature sets
-                exclude_columns = ['symbol', 'sector', 'target_5d', 'target_30d', 'target_90d', 
-                                  'return_5d', 'return_30d', 'return_90d']
-                feature_columns = [col for col in self.model_data.columns if col not in exclude_columns]
-                
-                self.feature_sets = {
-                    'numerical_only': [col for col in feature_columns 
-                                     if not any(term in col.lower() for term in ['sentiment', 'news', 'decay'])],
-                    'with_sentiment': [col for col in feature_columns 
-                                     if not any(term in col for term in ['decay_5d', 'decay_30d', 'decay_90d'])],
-                    'full_features': feature_columns,
-                    'lstm_features': [col for col in feature_columns 
-                                    if any(term in col for term in ['Close', 'Volume', 'RSI', 'MACD', 'lag'])]
-                }
-                
-                self.target_columns = [col for col in ['target_5d', 'target_30d', 'target_90d'] 
-                                     if col in self.model_data.columns]
-    
-    except Exception as e:
-        logger.warning(f"Could not load some previous results: {e}")
-        
-        
-def _save_news_data(self, news_data: Dict, filename: str = "news_data.pkl"):
-    """Save news data to disk for reloading in subsequent steps"""
-    news_file = Path("data/news") / filename
-    try:
-        with open(news_file, 'wb') as f:
-            pickle.dump(news_data, f)
-        logger.info(f"News data saved to {news_file}")
-    except Exception as e:
-        logger.warning(f"Could not save news data: {e}")
-
-def _load_news_data(self, filename: str = "news_data.pkl") -> Optional[Dict]:
-    """Load news data from disk"""
-    news_file = Path("data/news") / filename
-    if news_file.exists():
-        try:
-            with open(news_file, 'rb') as f:
-                news_data = pickle.load(f)
-            logger.info(f"News data loaded from {news_file}")
-            total_articles = sum(len(articles) for articles in news_data.values())
-            logger.info(f"Loaded {total_articles} articles across {len(news_data)} symbols")
-            return news_data
-        except Exception as e:
-            logger.warning(f"Could not load news data: {e}")
-    return None
-
-
 
 
 def main():
