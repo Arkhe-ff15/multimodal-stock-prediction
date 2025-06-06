@@ -1,0 +1,44 @@
+# Data files
+data/raw/
+data/processed/
+*.csv
+*.parquet
+
+# Model checkpoints
+results/models/
+*.ckpt
+*.pth
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# Python environments
+venv/
+env/
+.env
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+wandb/
+experiment.log
+
+# Temporary files
+tmp/
+temp/

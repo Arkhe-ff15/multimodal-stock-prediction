@@ -1,0 +1,233 @@
+# ==============================================================================
+# Multi-Horizon Sentiment-Enhanced TFT - Main Configuration File
+# ==============================================================================
+
+# Data Configuration
+data:
+  stocks: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA']
+  start_date: '2018-12-01'
+  end_date: '2024-01-31'
+  cache_data: true
+  validation_split: 0.15
+  test_split: 0.15
+  features:
+    price: ['open', 'high', 'low', 'close', 'volume']
+    technical: ['rsi', 'macd', 'bb_upper', 'bb_lower', 'sma_20', 'ema_12']
+    lags: [1, 2, 3, 5, 10]
+  api_keys:
+    newsapi: 'eb3c4357b1fd4128b767bce9c3c71d48'
+    alphavantage: "BHNCCJTDZNJ06YIU"
+  min_trading_days: 100
+  outlier_threshold: 0.5
+
+# News Collection Configuration
+news:
+  sources: ['yahoo_finance_news', 'newsapi_fallback', 'alphavantage_news']
+  max_articles_per_day: 20
+  max_articles_total: 1000
+  request_interval: 2.0
+  max_retries: 3
+  timeout: 30
+  min_article_length: 20
+  dedupe_threshold: 0.8
+  enable_mock_data: true
+  mock_articles_per_week: 2
+
+# Sentiment Analysis Configuration
+sentiment:
+  model_name: "ProsusAI/finbert"
+  batch_size: 8
+  max_length: 512
+  confidence_threshold: 0.75
+  relevance_threshold: 0.85
+  quality_filters:
+    min_length: true
+    language_filter: true
+    relevance_check: true
+    confidence_filter: true
+    duplicate_filter: true
+  cache_results: true
+  device: "auto"
+  quality_threshold: 0.70
+  text_max_length: 512
+  min_articles_for_sentiment: 3
+
+# Temporal Decay Configuration (CORE INNOVATION)
+temporal_decay:
+  lambda_5: 0.3
+  lambda_30: 0.1
+  lambda_90: 0.05
+  lookback_days:
+    5: 10
+    30: 30
+    90: 60
+  min_sentiment_count: 3
+
+# Model Architecture Configuration
+model:
+  # Base Architecture
+  hidden_size: 64
+  attention_head_size: 4
+  dropout: 0.3
+  num_lstm_layers: 2
+  
+  # Optimizer Settings
+  learning_rate: 0.001
+  batch_size: 32
+  max_epochs: 50
+  gradient_clip_val: 1.0
+  weight_decay: 1e-4
+  optimizer: 'AdamW'
+  
+  # Learning Rate Scheduling
+  early_stopping_patience: 10
+  reduce_lr_patience: 5
+  reduce_lr_factor: 0.5
+  min_lr: 1e-6
+  lr_scheduler: 'ReduceLROnPlateau'
+  
+  # Training Validation
+  validation_check_interval: 0.25
+  monitor_metric: 'val_loss'
+  mode: 'min'
+  
+  # Time Series Parameters
+  max_encoder_length: 30
+  max_prediction_length: 5
+  training_cutoff_days: 365
+  
+  # Regularization
+  label_smoothing: 0.0
+  mixup_alpha: 0.0
+  dropout_rate: 0.3
+  
+  # Model Variants
+  model_types:
+    temporal_decay:
+      class: 'TFTTemporalDecayModel'
+      use_temporal_fusion: true
+      horizon_specific_layers: true
+    static_sentiment:
+      class: 'TFTStaticSentimentModel'
+      use_temporal_fusion: false
+      horizon_specific_layers: false
+    numerical_only:
+      class: 'TFTNumericalModel'
+      use_sentiment: false
+      simplified_architecture: true
+    lstm_baseline:
+      class: 'LSTMBaseline'
+      simple_architecture: true
+      num_layers: 2
+      
+  # Loss Functions
+  loss_function: 'MSE'
+  loss_weights:
+    5: 1.0
+    30: 1.0
+    90: 1.0
+    
+  # Feature Engineering
+  feature_selection:
+    use_technical_indicators: true
+    use_sentiment_features: true
+    use_temporal_decay: true
+    use_price_lags: true
+    
+  # Model Initialization
+  init_method: 'xavier_uniform'
+  bias_init: 'zeros'
+  
+  # Batch Normalization
+  use_batch_norm: true
+  batch_norm_momentum: 0.1
+  
+  # Attention Mechanism
+  attention_dropout: 0.1
+  attention_type: 'multihead'
+  use_positional_encoding: false
+
+# Training Configuration
+training:
+  test_size: 0.15
+  val_size: 0.15
+  cv_folds: 5
+  cv_method: 'time_series'
+  weight_decay: 1e-4
+  gradient_clip_val: 1.0
+  monitor_metric: 'val_loss'
+  mode: 'min'
+  validation_check_interval: 0.25
+
+# Evaluation Configuration
+evaluation:
+  significance_level: 0.05
+  min_observations: 30
+  metrics: ['RMSE', 'MAE', 'MAPE', 'R2', 'directional_accuracy']
+  statistical_tests: ['wilcoxon', 'friedman']
+  
+# Visualization Configuration
+visualization:
+  create_plots: true
+  save_interactive: true
+  plot_format: 'png'
+  plot_dpi: 300
+  figsize_default: [12, 8]
+
+# File Paths
+paths:
+  raw_data: 'data/raw'
+  processed_data: 'data/processed'
+  cache_dir: 'data/cache'
+  results_dir: 'results'
+  models_dir: 'results/models'
+  plots_dir: 'results/plots'
+  metrics_dir: 'results/metrics'
+  combined_dataset: 'combined_dataset.parquet'
+  sentiment_features: 'sentiment_features.parquet'
+  temporal_decay_features: 'temporal_decay_features.parquet'
+  model_ready_data: 'model_ready_data.parquet'
+
+# Forecast Horizons
+horizons: [5, 30, 90]
+
+# Reproducibility
+random_seed: 42
+
+# Experiment Tracking
+experiment:
+  name: "Multi-Horizon-Sentiment-TFT"
+  version: "v1.0"
+  description: "Horizon-specific temporal sentiment decay for financial forecasting"
+  save_results: true
+  create_report: true
+  track_metrics: true
+  save_predictions: true
+  
+# Logging and Monitoring
+logging:
+  level: "INFO"
+  save_logs: true
+  log_file: "experiment.log"
+  console_output: true
+
+# Error Handling
+error_handling:
+  continue_on_symbol_failure: true
+  max_symbol_failures: 2
+  retry_failed_symbols: true
+  graceful_degradation: true
+
+# Performance Settings
+performance:
+  parallel_news_collection: false
+  chunk_size: 1000
+  memory_limit_mb: 2048
+  num_workers: 4
+  persistent_workers: true
+
+# Hardware Configuration
+hardware:
+  use_gpu: true
+  mixed_precision: true
+  pin_memory: true

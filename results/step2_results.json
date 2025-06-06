@@ -1,0 +1,27 @@
+{
+  "success": true,
+  "by_symbol": {
+    "AAPL": {
+      "error": "no_news_articles"
+    },
+    "MSFT": {
+      "error": "no_news_articles"
+    },
+    "GOOGL": {
+      "error": "no_news_articles"
+    },
+    "AMZN": {
+      "error": "no_news_articles"
+    },
+    "TSLA": {
+      "error": "no_news_articles"
+    }
+  },
+  "quality_report": {
+    "error": "No texts processed yet"
+  },
+  "total_features": 0,
+  "processing_time_seconds": 1.968428,
+  "symbols_processed": 0,
+  "total_articles_analyzed": 0
+}

@@ -1,0 +1,260 @@
+# Enhanced Data Configuration for Multi-Horizon Sentiment-Enhanced TFT
+# Fixed with proper date ranges that will work with yfinance
+
+data:
+  # Stock symbols - smaller test set first, then expand
+  stocks:
+    # Large Cap Tech (start with these reliable symbols)
+    - AAPL
+    - MSFT
+    - GOOGL
+    - AMZN
+    - TSLA
+    # Add more once working
+    # - META
+    # - NVDA
+    # - JPM
+    # - BAC
+
+  # FIXED: Date range with proper historical data availability
+  start_date: '2018-12-31'  # Start from 2020 (more reliable data)
+  end_date: '2024-06-01'    # End in June 2024 (definitely available)
+  
+  # Train/validation/test splits
+  validation_split: 0.15
+  test_split: 0.15
+  
+  # Enhanced feature configuration
+  features:
+    # Price features
+    price:
+      - open
+      - high
+      - low
+      - close
+      - volume
+    
+    # Technical indicators (enhanced)
+    technical:
+      - rsi_14
+      - rsi_21
+      - macd
+      - macd_signal
+      - macd_histogram
+      - bb_upper_20
+      - bb_lower_20
+      - bb_middle_20
+      - bb_width_20
+      - bb_position_20
+      - sma_5
+      - sma_10
+      - sma_20
+      - sma_50
+      - sma_200
+      - ema_5
+      - ema_10
+      - ema_20
+      - ema_50
+      - ema_200
+      - volatility_5d
+      - volatility_10d
+      - volatility_20d
+      - volatility_60d
+      - volume_sma_20
+      - volume_ratio
+      - vwap
+    
+    # Lag features for temporal patterns
+    lags:
+      - 1
+      - 2
+      - 3
+      - 5
+      - 10
+      - 20
+    
+    # Momentum features
+    momentum:
+      - 1
+      - 3
+      - 5
+      - 10
+      - 20
+
+# Sentiment analysis configuration
+sentiment:
+  # News sources (in order of preference)
+  sources:
+    - yahoo_finance      # Free, no API key required
+    - mock              # Fallback for testing
+    - newsapi           # Requires API key (optional)
+    - alphavantage      # Requires API key (optional)
+  
+  # Quality filters
+  max_articles_per_day: 15
+  relevance_threshold: 0.85
+  confidence_threshold: 0.7
+  quality_threshold: 0.7
+  
+  # Text processing
+  text_max_length: 512
+  min_text_length: 5  # Minimum words
+  
+  # Enhanced sentiment features
+  enhanced_features:
+    - sentiment_decay_5d
+    - sentiment_decay_30d
+    - sentiment_decay_90d
+    - sentiment_count_1d
+    - sentiment_count_7d
+    - sentiment_count_30d
+    - avg_relevance
+    - avg_sentiment
+    - sentiment_std
+    - sentiment_positive_ratio
+    - news_recency_score
+    - news_momentum_7d
+    - news_source_diversity
+
+# News collection configuration
+news:
+  # Parallel processing
+  parallel_workers: 4
+  use_parallel: true
+  
+  # Rate limiting (seconds between requests)
+  rate_limits:
+    yahoo_finance: 1.0
+    newsapi: 2.0
+    alphavantage: 3.0
+  
+  # Caching
+  cache_enabled: true
+  cache_dir: "data/cache"
+  
+  # Mock news generation (for testing/fallback)
+  mock_news:
+    enabled: true
+    base_probability: 0.08
+    earnings_boost: 2.0
+    weekday_boost: 1.5
+
+# API Keys (optional - leave empty if not available)
+api_keys:
+  # Get free API key from https://newsapi.org/
+  newsapi: null  # "your_newsapi_key_here"
+  
+  # Get free API key from https://www.alphavantage.co/
+  alphavantage: null  # "your_alphavantage_key_here"
+
+# Data processing configuration
+processing:
+  # Enhanced technical indicators
+  enhanced_features: true
+  
+  # Target variables
+  target_horizons:
+    - 5
+    - 30
+    - 90
+  
+  # Data cleaning
+  outlier_threshold: 0.5  # 50% change threshold
+  min_trading_days: 100   # Minimum data required
+  
+  # Cross-sectional features
+  cross_sectional:
+    enabled: true
+    features:
+      - volume_rank
+      - return_rank
+      - news_count_rank
+      - sector_relative_return
+
+# Sector mapping for enhanced analysis
+sectors:
+  Technology:
+    - AAPL
+    - MSFT
+    - GOOGL
+    - AMZN
+    - TSLA
+    - META
+    - NVDA
+    - CRM
+    - ADBE
+    - ROKU
+  Financial:
+    - JPM
+    - BAC
+    - WFC
+    - GS
+    - MS
+    - C
+  Healthcare:
+    - JNJ
+    - PFE
+    - UNH
+    - ABBV
+    - MRK
+    - TMO
+  Consumer:
+    - WMT
+    - HD
+    - PG
+    - KO
+    - PEP
+    - NKE
+  Industrial:
+    - CAT
+    - BA
+    - GE
+  Energy:
+    - XOM
+    - CVX
+    - COP
+  Communication:
+    - VZ
+    - T
+    - CMCSA
+    - DIS
+    - NFLX
+  Fintech:
+    - SHOP
+    - SQ
+    - PYPL
+
+# Temporal decay configuration (horizon-specific)
+temporal_decay:
+  # Short-term: fast decay for 5-day forecasts
+  horizon_5d:
+    lambda_decay: 0.3
+    lookback_days: 10
+    min_sentiment_count: 3
+  
+  # Medium-term: moderate decay for 30-day forecasts
+  horizon_30d:
+    lambda_decay: 0.1
+    lookback_days: 30
+    min_sentiment_count: 5
+  
+  # Long-term: slow decay for 90-day forecasts
+  horizon_90d:
+    lambda_decay: 0.05
+    lookback_days: 60
+    min_sentiment_count: 7
+
+# Output configuration
+output:
+  # Save paths
+  processed_data_path: "data/processed/enhanced_dataset.parquet"
+  cache_dir: "data/cache"
+  
+  # Metadata
+  save_metadata: true
+  
+  # Feature engineering
+  create_targets: true
+  create_lags: true
+  create_technical_indicators: true
+  create_news_features: true
