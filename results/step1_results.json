@@ -3,10 +3,10 @@
   "total_rows": 6820,
   "total_features": 88,
   "symbols": [
-    "AAPL",
-    "TSLA",
-    "GOOGL",
     "MSFT",
+    "TSLA",
+    "AAPL",
+    "GOOGL",
     "AMZN"
   ],
   "sectors": [
@@ -22,8 +22,8 @@
     "mock_historical"
   ],
   "total_news_articles": 115,
-  "avg_news_per_day": 0.05498533724340176,
-  "processing_time_seconds": 6.662976,
+  "avg_news_per_day": 0.05439882697947214,
+  "processing_time_seconds": 7.753804,
   "missing_values": "0",
   "target_variables": [
     "target_5d",
