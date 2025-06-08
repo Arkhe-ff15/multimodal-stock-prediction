@@ -1,0 +1,52 @@
+{
+  "success": true,
+  "processing_time_seconds": 11.115318,
+  "market_data": {
+    "symbols_collected": 5,
+    "total_trading_days": 6740,
+    "technical_indicators_per_symbol": 70,
+    "required_indicators_present": 5,
+    "date_range_coverage": {
+      "start": "2018-12-03T00:00:00",
+      "end": "2024-01-31T00:00:00"
+    }
+  },
+  "news_data": {
+    "total_articles": 2594,
+    "articles_by_source": {
+      "sec_edgar": 139,
+      "federal_reserve": 1880,
+      "bloomberg_twitter": 511,
+      "investor_relations": 64
+    },
+    "sentiment_sources_present": 4,
+    "articles_per_symbol": {
+      "AAPL": 512,
+      "MSFT": 519,
+      "GOOGL": 520,
+      "AMZN": 518,
+      "TSLA": 525
+    }
+  },
+  "combined_dataset": {
+    "shape": [
+      6740,
+      109
+    ],
+    "feature_groups": {
+      "market_ohlcv": 5,
+      "technical_indicators": 37,
+      "sentiment_features": 16,
+      "target_variables": 9
+    },
+    "data_quality_score": 0.85
+  },
+  "quality_metrics": {
+    "overall_quality": 0.85,
+    "market_data_completeness": 0.95,
+    "news_data_coverage": 0.8,
+    "technical_indicators_complete": true,
+    "sentiment_sources_complete": true,
+    "date_range_coverage": 0.98
+  }
+}

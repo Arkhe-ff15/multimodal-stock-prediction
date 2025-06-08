@@ -1,0 +1,12 @@
+{
+  "success": true,
+  "processing_time_seconds": 0.037266,
+  "articles_processed": 2594,
+  "sentiment_features_created": 6,
+  "quality_filters_applied": [
+    "confidence",
+    "relevance",
+    "length"
+  ],
+  "note": "FinBERT implementation placeholder - replace with actual FinBERT processing"
+}

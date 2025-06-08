@@ -1,0 +1,70 @@
+{
+  "experiment_id": "enhanced_exp_20250608_154045",
+  "start_time": "2025-06-08T15:40:45.159916",
+  "config": {
+    "data": {
+      "stocks": [
+        "AAPL",
+        "MSFT",
+        "GOOGL",
+        "AMZN",
+        "TSLA"
+      ],
+      "start_date": "2018-12-01",
+      "end_date": "2024-01-31",
+      "cache_enabled": true,
+      "use_parallel": true
+    },
+    "sentiment": {
+      "model_name": "ProsusAI/finbert",
+      "confidence_threshold": 0.7,
+      "cache_results": true
+    },
+    "temporal_decay": {
+      "lambda_5": 0.3,
+      "lambda_30": 0.1,
+      "lambda_90": 0.05
+    },
+    "horizons": [
+      5,
+      30,
+      90
+    ],
+    "experiment": {
+      "save_intermediate_results": true
+    }
+  },
+  "pipeline_status": {
+    "step_1_data_collection": false,
+    "step_2_sentiment_analysis": true,
+    "step_3_temporal_decay": false,
+    "step_4_data_preparation": false,
+    "step_5_model_training": false,
+    "step_6_evaluation_explainability": false
+  },
+  "processing_times": {
+    "step_2": 0.037266
+  },
+  "data_quality_metrics": {},
+  "errors_encountered": [],
+  "feature_counts": {},
+  "model_performance": {},
+  "investment_signals": {},
+  "completion_time": "2025-06-08T15:40:45.197822",
+  "total_runtime_seconds": 0.037713,
+  "status": "completed",
+  "steps_results": {
+    "step_2": {
+      "success": true,
+      "processing_time_seconds": 0.037266,
+      "articles_processed": 2594,
+      "sentiment_features_created": 6,
+      "quality_filters_applied": [
+        "confidence",
+        "relevance",
+        "length"
+      ],
+      "note": "FinBERT implementation placeholder - replace with actual FinBERT processing"
+    }
+  }
+}

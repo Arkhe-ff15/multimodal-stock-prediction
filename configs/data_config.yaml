@@ -1,484 +1,257 @@
-# ==============================================================================
-# REFINED ACADEMIC DATA CONFIGURATION
-# Multi-Horizon Financial Forecasting with Focused High-Quality Sources
-# ==============================================================================
-# 🎓 Refined for maximum academic credibility with balanced real data
-# 🎯 Focus: Quality over quantity, balanced temporal coverage 2018-2024
-# 📊 Sources: Primary sources (70%) + Bloomberg Twitter (20%) + Optional fallback (10%)
+# Enhanced Configuration - Complete Requirements Coverage
+# Date Range: December 2018 to January 2024
+# All required sentiment sources and technical indicators
 
-# ==============================================================================
-# CORE DATA CONFIGURATION
-# ==============================================================================
+# Data Configuration - Complete Requirements
 data:
-  # Stock universe for multi-horizon analysis
-  stocks:
-    # 🏢 Large Cap Technology (Primary focus - balanced representation)
-    - AAPL    # Apple Inc (CIK: 0000320193)
-    - MSFT    # Microsoft Corp (CIK: 0000789019)
-    - GOOGL   # Alphabet Inc (CIK: 0001652044)
-    - AMZN    # Amazon.com Inc (CIK: 0001018724)
-    - TSLA    # Tesla Inc (CIK: 0001318605)
-
-  # 🎓 ACADEMIC TIME PERIOD: Balanced 2018-2024 representation
-  start_date: '2018-01-01'    # Full 2018 coverage for balance
-  end_date: '2024-06-01'      # Current coverage endpoint
+  # Stock symbols for analysis
+  stocks: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA']
   
-  # Data quality and balance standards
-  validation_split: 0.15
-  test_split: 0.15
-  min_trading_days: 100       # Minimum data for academic rigor
-  outlier_threshold: 0.5      # 50% daily change threshold
-
-  # 🎯 REFINED ACADEMIC SOURCE CONFIGURATION (Quality Focus)
-  academic_sources:
-    # 🏛️ TIER 1: PRIMARY SOURCES (70% total weight - Enhanced focus)
+  # Complete date range covering major events (Dec 2018 - Jan 2024)
+  start_date: '2018-12-01'
+  end_date: '2024-01-31'
+  
+  # Data collection settings
+  cache_data: true
+  cache_enabled: true
+  use_parallel: true
+  
+  # Complete sentiment sources as requested
+  sentiment_sources:
     sec_edgar:
-      weight: 0.30              # Increased weight for regulatory authority
-      reliability: 1.0          # Maximum reliability score
-      priority: 1               # Highest priority
-      verification: 'primary_source'
-      description: 'SEC regulatory filings and material events'
-      filing_types:
-        - '8-K'                 # Material corporate events (highest sentiment signal)
-        - '10-Q'                # Quarterly reports with MD&A
-        - '10-K'                # Annual reports with forward guidance
-        - 'DEF 14A'             # Proxy statements
-      rate_limit_seconds: 1.0   # Respectful API usage
-      balance_priority: 'high'  # High priority for data balancing
-      
-    # 🏦 FEDERAL RESERVE ECONOMIC DATA - GOVERNMENT AUTHORITY (20% weight - Enhanced)  
-    fred_economic:
-      weight: 0.20              # Increased from 15% for government authority
-      reliability: 1.0          # Government data = maximum reliability
-      priority: 2
-      verification: 'government'
-      description: 'Federal Reserve economic indicators'
-      indicators:
-        - 'GDP'                 # Real Gross Domestic Product
-        - 'FEDFUNDS'            # Federal Funds Rate
-        - 'CPIAUCSL'            # Consumer Price Index
-        - 'UNRATE'              # Unemployment Rate
-        - 'NASDAQCOM'           # NASDAQ Composite Index
-      frequency: 'quarterly'    # Quarterly economic releases
-      rate_limit_seconds: 0.5
-      balance_priority: 'medium' # Macro data for context
-
-    # 🏢 OFFICIAL INVESTOR RELATIONS - PRIMARY CORPORATE (20% weight)
+      enabled: true
+      weight: 0.25
+      reliability: 1.0
+      description: 'SEC EDGAR filings'
+    federal_reserve:
+      enabled: true
+      weight: 0.20
+      reliability: 1.0
+      description: 'Federal Reserve data and reports'
     investor_relations:
-      weight: 0.20              # Maintained weight for primary corporate
-      reliability: 0.95         # Very high reliability for official comms
-      priority: 3
-      verification: 'primary_source'
-      description: 'Official corporate communications and earnings'
-      content_types:
-        - 'earnings'            # Quarterly earnings announcements
-        - 'guidance'            # Forward guidance updates
-        - 'press_releases'      # Official press releases
-        - 'conference_calls'    # Earnings call transcripts
-      rate_limit_seconds: 2.0   # Respectful corporate server usage
-      balance_priority: 'high'  # High priority for earnings balance
-
-    # 📱 TIER 2: RESEARCH-VALIDATED SOCIAL MEDIA (20% total weight - Focused)
+      enabled: true
+      weight: 0.25
+      reliability: 0.95
+      description: 'Official investor relations data'
     bloomberg_twitter:
-      weight: 0.20              # Increased weight - single quality source
-      reliability: 0.92         # Research-validated professional source
-      priority: 4
-      verification: 'professional_verified'
-      description: 'Bloomberg professional Twitter feed - research validated'
-      academic_validation: 'SpringerLink research: "very high correlation between sentiments on Twitter and stock market behaviour"'
-      handle: '@Bloomberg'
-      followers: '4.5M+'
-      research_citation: 'Academic research validates high market correlation with financial markets'
-      content_type: 'professional_social_media'
-      rate_limit_seconds: 1.5   # Respectful social media usage
-      balance_priority: 'high'  # Important for real-time sentiment
-      api_fallback: 'professional_simulation'  # High-quality fallback if API unavailable
-
-    # 📰 TIER 3: OPTIONAL FALLBACK (10% total weight - Quality supplement)
+      enabled: true
+      weight: 0.20
+      reliability: 0.85
+      description: 'Bloomberg Twitter news'
     yahoo_finance:
-      weight: 0.10              # Reduced weight - supplementary only
-      reliability: 0.80         # Professional journalism standard
-      priority: 5
-      verification: 'verified'
-      description: 'Professional financial journalism and analysis'
-      enabled: false            # Optional - can be enabled if needed
-      content_types:
-        - 'financial_news'      # Professional financial reporting
-        - 'analyst_reports'     # Professional analyst coverage
-        - 'market_analysis'     # Market analysis and commentary
-      rate_limit_seconds: 1.0
-      max_articles_per_request: 30
-      balance_priority: 'low'   # Supplementary data only
-
-  # ✅ CONFIRMED: All mock and synthetic sources permanently removed
-
-# ==============================================================================
-# DATA BALANCING CONFIGURATION (New - Academic Quality Focus)
-# ==============================================================================
-data_balancing:
-  # 🎯 Temporal balancing (2018-2024 equal representation)
-  temporal_balance:
-    enabled: true
-    target_years: [2018, 2019, 2020, 2021, 2022, 2023, 2024]
-    articles_per_year_target: 50      # Target articles per stock per year
-    articles_per_year_minimum: 30     # Minimum threshold per year
-    max_yearly_deviation: 0.25        # Max 25% deviation from target
-    balance_method: 'stratified_sampling'  # Even sampling across time periods
-    
-  # 📊 Cross-sectional balancing (equal stock representation)
-  stock_balance:
-    enabled: true
-    equal_representation: true        # Equal articles across all stocks
-    total_articles_per_stock: 350     # Target total per stock (50*7 years)
-    minimum_articles_per_stock: 245   # Minimum per stock (35*7 years)
-    balance_tolerance: 0.15           # 15% tolerance between stocks
-    normalization_method: 'downsample_to_minimum'  # Ensure balance
-    
-  # 🎓 Quality over quantity parameters
-  quality_focus:
-    max_articles_per_day_per_stock: 3    # Reduce noise, focus on quality
-    prioritize_high_significance: true    # Earnings, SEC filings priority
-    min_relevance_score: 0.75            # Higher relevance threshold
-    deduplicate_similar_content: true     # Remove near-duplicate articles
-    prefer_primary_sources: true         # Prioritize SEC, IR, FRED over news
-    
-  # 📅 Seasonal balancing (account for earnings cycles)
-  seasonal_balance:
-    enabled: true
-    earnings_season_weight: 1.2          # Slightly boost earnings months
-    holiday_period_adjustment: 0.8       # Reduce during market holidays
-    weekend_exclusion: true              # Exclude weekend articles
-    
-  # 🔄 Rebalancing triggers
-  rebalancing:
-    auto_rebalance: true                 # Automatic rebalancing during collection
-    rebalance_threshold: 0.20            # Trigger rebalancing if >20% imbalance
-    final_validation: true               # Final balance check before saving
-
-# ==============================================================================
-# ENHANCED ACADEMIC QUALITY STANDARDS
-# ==============================================================================
-quality_standards:
-  # 🎓 Refined academic requirements (Increased standards)
-  min_primary_source_percentage: 70.0    # Increased from 55% (SEC + FRED + IR)
-  min_government_percentage: 20.0        # Minimum 20% government data (FRED)
-  bloomberg_validation_required: true    # Must include Bloomberg data
-  min_overall_quality_score: 0.88        # Increased quality threshold
-  require_source_diversity: true         # Multiple source types required
+      enabled: true
+      weight: 0.10
+      reliability: 0.75
+      description: 'Yahoo Finance news (optional)'
   
-  # 📊 Balancing validation requirements  
-  balance_validation:
-    yearly_balance_required: true        # Must pass temporal balance test
-    stock_balance_required: true         # Must pass cross-sectional balance test
-    max_coefficient_of_variation: 0.25   # Max CV for article distribution
-    min_years_represented: 6             # Must have data from 6/7 years minimum
-    
-  # 📱 Bloomberg Twitter standards
-  bloomberg_standards:
-    require_professional_content: true   # Professional financial content only
-    min_market_relevance: 0.80          # High market relevance required
-    research_validation_confirmed: true  # Academic research backing required
-    real_time_priority: true            # Prioritize real-time data when available
-    
-  # 📰 Content validation thresholds
-  content_validation:
-    min_article_word_count: 10          # Increased minimum length
-    min_source_reliability: 0.75        # Increased reliability threshold
-    confidence_threshold: 0.75          # Increased confidence threshold
-    relevance_threshold: 0.75           # Increased relevance threshold
-    
-  # 🎓 Academic citation and reproducibility
-  academic_standards:
-    enable_citations: true              # Generate academic citations
-    citation_format: 'academic'         # Academic citation style
-    require_urls: true                  # Source URLs for verification
-    reproducible_methodology: true      # Ensure reproducible data collection
-    data_provenance_tracking: true      # Track all data sources and methods
-
-# ==============================================================================
-# ENHANCED FEATURE ENGINEERING
-# ==============================================================================
-features:
-  # 📈 Market data features (Technical analysis)
-  market_features:
-    price_features:
-      - open
-      - high
-      - low
-      - close
-      - volume
-      - adjusted_close
-    
-    technical_indicators:
-      moving_averages: [5, 10, 20, 50, 200]  # Standard academic periods
-      rsi_periods: [14, 21]                  # RSI variations
-      bollinger_bands: [20]                  # Standard BB period
-      macd_parameters:                       # MACD configuration
-        fast: 12
-        slow: 26
-        signal: 9
-      volatility_windows: [5, 10, 20, 60]    # Multi-timeframe volatility
-    
-    lag_features: [1, 2, 3, 5, 10, 20]      # Temporal lag features
-    momentum_periods: [1, 3, 5, 10, 20]     # Momentum calculations
-
-  # 📰 Refined news features (Quality-focused sentiment)
-  news_features:
-    # Enhanced academic quality features
-    academic_features:
-      - academic_quality_score             # Overall academic quality
-      - primary_source_ratio               # Ratio of primary sources (target: 70%+)
-      - government_source_ratio            # Ratio of government sources (target: 20%+)
-      - bloomberg_sentiment_score          # Specific Bloomberg sentiment
-      - source_reliability_weighted_avg    # Reliability-weighted average
-      - temporal_balance_score             # Temporal distribution quality
-      - cross_sectional_balance_score      # Stock balance quality
-      
-    # Bloomberg-focused sentiment features
-    bloomberg_features:
-      - bloomberg_sentiment_mean           # Bloomberg-specific sentiment
-      - bloomberg_article_count            # Bloomberg article frequency
-      - bloomberg_confidence_avg           # Bloomberg sentiment confidence
-      - bloomberg_market_relevance         # Bloomberg market relevance score
-      
-    # Enhanced temporal features with balance awareness
-    temporal_features:
-      - sentiment_mean_1d                  # 1-day window
-      - sentiment_mean_7d                  # 7-day window  
-      - sentiment_mean_30d                 # 30-day window
-      - sentiment_volatility_7d            # 7-day sentiment volatility
-      - sentiment_trend_30d                # 30-day sentiment trend
-      - yearly_sentiment_zscore            # Year-normalized sentiment
-      
-    # Cross-sectional features (relative to other stocks)
-    cross_sectional_features:
-      - sentiment_rank_within_day          # Daily sentiment ranking
-      - sentiment_relative_to_sector       # Sector-relative sentiment
-      - bloomberg_sentiment_rank           # Bloomberg-specific ranking
-
-# ==============================================================================
-# MULTI-HORIZON FORECASTING CONFIGURATION (Refined)
-# ==============================================================================
-forecasting:
-  # 🎯 Target prediction horizons
-  horizons: [5, 30, 90]                   # Days for multi-horizon forecasting
+  # Complete technical indicators as requested
+  technical_indicators:
+    basic: ['Open', 'High', 'Low', 'Close', 'Volume']  # OHLCV
+    moving_averages: [5, 10, 20, 50, 200]  # EMA periods
+    rsi_periods: [14, 21]  # RSI
+    macd_params: 
+      fast: 12
+      slow: 26
+      signal: 9
+    bollinger_periods: [20]  # For BBW (Bollinger Band Width)
+    vwap_periods: [20, 50]  # VWAP
+    lag_periods: [1, 2, 3, 5, 10, 20]  # Lag features
   
-  # Target variable types
-  target_types:
-    - returns                             # Price returns
-    - direction                           # Price direction (binary)
-    - volatility                          # Price volatility
-  
-  # Refined horizon-specific configurations
-  horizon_configs:
-    5d:   # Short-term forecasting (Bloomberg Twitter most relevant)
-      emphasis: 'bloomberg_sentiment'      # Focus on real-time Bloomberg data
-      sentiment_decay_weight: 'high'       # Strong decay for short-term
-      primary_source_boost: 1.3            # Boost primary sources
-      bloomberg_boost: 1.4                 # Special boost for Bloomberg
-      
-    30d:  # Medium-term forecasting (Earnings and regulatory focus)
-      emphasis: 'earnings_and_regulatory'   # Focus on earnings and SEC filings
-      sentiment_decay_weight: 'medium'     # Moderate decay
-      primary_source_boost: 1.2            # Moderate boost
-      bloomberg_boost: 1.1                 # Light boost for Bloomberg
-      
-    90d:  # Long-term forecasting (Macro trends and fundamentals)
-      emphasis: 'macro_and_fundamentals'    # Focus on FRED and long-term trends
-      sentiment_decay_weight: 'low'        # Slow decay for long-term
-      economic_weight_boost: 1.4           # Boost economic indicators
-      bloomberg_boost: 0.9                 # Reduce Bloomberg weight for long-term
+  # Company mapping for better sentiment relevance
+  company_mapping:
+    AAPL:
+      name: 'Apple Inc'
+      sector: 'Technology'
+      keywords: ['apple', 'iphone', 'ipad', 'mac', 'ios', 'tim cook', 'cupertino']
+      cik: '0000320193'
+    MSFT:
+      name: 'Microsoft Corporation'
+      sector: 'Technology'
+      keywords: ['microsoft', 'windows', 'office', 'azure', 'xbox', 'satya nadella']
+      cik: '0000789019'
+    GOOGL:
+      name: 'Alphabet Inc'
+      sector: 'Technology'
+      keywords: ['google', 'alphabet', 'youtube', 'android', 'search', 'sundar pichai']
+      cik: '0001652044'
+    AMZN:
+      name: 'Amazon.com Inc'
+      sector: 'Technology'
+      keywords: ['amazon', 'aws', 'prime', 'alexa', 'jeff bezos', 'andy jassy']
+      cik: '0001018724'
+    TSLA:
+      name: 'Tesla Inc'
+      sector: 'Technology'
+      keywords: ['tesla', 'elon musk', 'electric vehicle', 'model s', 'model 3', 'model y']
+      cik: '0001318605'
 
-# ==============================================================================
-# REFINED TEMPORAL DECAY CONFIGURATION
-# ==============================================================================
+# Sentiment Analysis Configuration (Step 2)
+sentiment:
+  model_name: "ProsusAI/finbert"
+  batch_size: 16
+  confidence_threshold: 0.7
+  relevance_threshold: 0.85
+  quality_threshold: 0.7
+  text_max_length: 512
+  min_articles_for_sentiment: 3
+  cache_results: true
+  device: "auto"
+  
+  # Quality filters for FinBERT processing
+  quality_filters:
+    min_length: true
+    language_filter: true
+    relevance_check: true
+    confidence_filter: true
+    duplicate_filter: true
+
+# Temporal Decay Configuration (Step 3)
 temporal_decay:
-  # 🎓 Refined decay parameters for 5 focused sources
-  refined_decay_params:
-    # Short-term horizon (5 days) - Bloomberg and recent events prioritized
-    horizon_5d:
-      lambda_decay: 0.3                  # Fast decay for short-term
-      lookback_days: 15                  # 15-day lookback window
-      min_sentiment_count: 3             # Minimum articles for reliability
-      source_specific_lambdas:
-        sec_edgar: 0.25                  # SEC filings have some persistence
-        fred_economic: 0.45              # Economic data less relevant short-term
-        investor_relations: 0.30         # Earnings calls moderate persistence
-        bloomberg_twitter: 0.20          # Bloomberg most relevant for short-term
-        yahoo_finance: 0.40              # Traditional news moderate decay
-    
-    # Medium-term horizon (30 days) - Balanced approach
-    horizon_30d:
-      lambda_decay: 0.1                  # Moderate decay
-      lookback_days: 45                  # 45-day lookback window
-      min_sentiment_count: 5             # Higher threshold for reliability
-      source_specific_lambdas:
-        sec_edgar: 0.08                  # SEC filings very persistent
-        fred_economic: 0.12              # Economic trends moderate persistence
-        investor_relations: 0.10         # Corporate guidance persistent
-        bloomberg_twitter: 0.15          # Bloomberg moderate decay
-        yahoo_finance: 0.18              # Traditional news faster decay
-    
-    # Long-term horizon (90 days) - Fundamentals and macro focus
-    horizon_90d:
-      lambda_decay: 0.05                 # Slow decay for long-term
-      lookback_days: 120                 # 120-day lookback window  
-      min_sentiment_count: 7             # Highest threshold
-      source_specific_lambdas:
-        sec_edgar: 0.04                  # Regulatory changes very persistent
-        fred_economic: 0.03              # Economic trends most persistent
-        investor_relations: 0.06         # Corporate strategy persistent
-        bloomberg_twitter: 0.12          # Social media less relevant long-term
-        yahoo_finance: 0.08              # Traditional news moderate persistence
-
-  # Enhanced quality weighting for refined sources
-  quality_weights:
-    event_amplification: 1.5             # Boost for significant events
-    credibility_boost: 1.2               # Boost for high-credibility sources
-    primary_source_multiplier: 1.4       # Increased boost for primary sources
-    government_multiplier: 1.3           # Boost for government data (FRED)
-    bloomberg_multiplier: 1.2            # Boost for research-validated Bloomberg
-    balance_quality_boost: 1.1           # Boost for well-balanced data
-
-# ==============================================================================
-# DATA PROCESSING CONFIGURATION (Refined)
-# ==============================================================================
-processing:
-  # 🎓 Enhanced academic data processing
-  academic_processing:
-    enable_quality_scoring: true         # Academic quality assessment
-    require_source_verification: true    # Verify source authenticity
-    enable_citation_generation: true     # Generate academic citations
-    cross_validate_sources: true         # Cross-validate information
-    enable_balance_validation: true      # Validate temporal and cross-sectional balance
+  # Horizon-specific decay parameters
+  lambda_5: 0.3    # Fast decay for 5-day horizon
+  lambda_30: 0.1   # Medium decay for 30-day horizon
+  lambda_90: 0.05  # Slow decay for 90-day horizon
   
-  # Enhanced data cleaning for balanced dataset
-  cleaning:
-    remove_outliers: true                # Remove statistical outliers
-    outlier_std_threshold: 3.0           # 3-sigma outlier detection
-    fill_missing_method: 'forward_fill'  # Forward fill missing values
-    min_data_points: 100                 # Minimum data points per symbol
-    balance_aware_cleaning: true         # Maintain balance during cleaning
-    deduplicate_content: true            # Remove duplicate/similar articles
+  # Lookback windows
+  lookback_days:
+    5: 10    # 10-day lookback for 5-day prediction
+    30: 30   # 30-day lookback for 30-day prediction
+    90: 60   # 60-day lookback for 90-day prediction
   
-  # Enhanced cross-sectional features with balance awareness
-  cross_sectional:
-    enabled: true
-    features:
-      - volume_rank                      # Volume ranking within universe
-      - return_rank                      # Return ranking
-      - sentiment_rank                   # Sentiment ranking
-      - bloomberg_sentiment_rank         # Bloomberg-specific ranking
-      - sector_relative_return           # Sector-relative performance
-      - academic_quality_rank            # Academic quality ranking
-      - temporal_balance_score           # Individual stock temporal balance
+  # Quality thresholds
+  min_sentiment_count: 3
+  min_confidence: 0.7
 
-# ==============================================================================
-# OUTPUT AND CACHING CONFIGURATION (Enhanced)
-# ==============================================================================
-output:
-  # 🎓 Enhanced academic output requirements
-  academic_output:
-    save_citations: true                 # Save academic citations
-    create_bibliography: true           # Generate bibliography
-    export_metadata: true               # Export academic metadata
-    quality_report: true                # Generate quality assessment report
-    balance_report: true                 # Generate data balance report
-    bloomberg_validation_report: true   # Bloomberg-specific validation
+# Model Configuration (Steps 4-5)
+model:
+  # TFT Architecture
+  hidden_size: 64
+  attention_head_size: 4
+  dropout: 0.3
+  num_lstm_layers: 2
   
-  # Enhanced file paths and formats
-  paths:
-    processed_data: 'data/processed/refined_academic_dataset.parquet'
-    cache_dir: 'data/cache/refined_academic'
-    citations: 'data/processed/academic_citations.json'
-    bibliography: 'data/processed/bibliography.txt'
-    quality_report: 'data/processed/quality_assessment_report.json'
-    balance_report: 'data/processed/data_balance_report.json'
-    bloomberg_report: 'data/processed/bloomberg_validation_report.json'
-    metadata: 'data/processed/refined_academic_metadata.json'
+  # Training parameters
+  learning_rate: 0.001
+  batch_size: 32
+  max_epochs: 50
+  early_stopping_patience: 10
+  gradient_clip_val: 1.0
+  weight_decay: 1e-4
   
-  # Enhanced caching for reproducibility and balance
-  caching:
-    enabled: true                        # Enable caching for reproducibility
-    cache_duration_days: 30              # Cache academic sources for 30 days
-    cache_key_format: 'refined_{symbol}_{source}_{date}'
-    verify_cache_integrity: true         # Verify cached data integrity
-    balance_aware_caching: true          # Maintain balance in cached data
+  # Model variants for benchmarking
+  variants:
+    - 'TFT-Temporal-Decay'     # Main model with temporal decay
+    - 'TFT-Static-Sentiment'   # TFT with static sentiment
+    - 'TFT-Numerical'          # TFT without sentiment
+    - 'LSTM'                   # LSTM baseline
 
-# ==============================================================================
-# ENHANCED VALIDATION AND REPRODUCIBILITY
-# ==============================================================================
+# Multi-Horizon Prediction Configuration
+horizons: [5, 30, 90]  # 5-day, 30-day, 90-day predictions
+
+# Target variables for investment decisions
+targets:
+  prediction_types:
+    - 'returns'      # Continuous returns
+    - 'direction'    # Binary direction (up/down)
+    - 'volatility'   # Risk measure
+  
+  # Investment decision thresholds
+  decision_thresholds:
+    buy_threshold: 0.05    # 5% expected return for buy signal
+    sell_threshold: -0.03  # -3% expected return for sell signal
+    # Between these thresholds = hold
+
+# Evaluation and Explainability Configuration (Step 6)
+evaluation:
+  # Statistical tests
+  significance_level: 0.05
+  min_observations: 30
+  
+  # Metrics to compute
+  metrics: ['RMSE', 'MAE', 'MAPE', 'R2', 'directional_accuracy', 'sharpe_ratio']
+  
+  # Statistical tests for model comparison
+  statistical_tests: ['wilcoxon', 'friedman', 'diebold_mariano']
+  
+  # Explainability features
+  explainability:
+    feature_importance: true
+    attention_analysis: true
+    sentiment_attribution: true
+    temporal_contribution: true
+    investment_reasoning: true
+
+# Experiment Configuration
+experiment:
+  name: "Enhanced-Multi-Horizon-Sentiment-TFT"
+  version: "v2.0"
+  description: "Complete pipeline with all requirements: sentiment sources, technical indicators, temporal decay, multi-horizon prediction, and investment explainability"
+  save_results: true
+  save_intermediate_results: true
+  create_report: true
+  track_metrics: true
+  save_predictions: true
+
+# File Paths
+paths:
+  raw_data: 'data/raw'
+  processed_data: 'data/processed'
+  cache_dir: 'data/cache'
+  results_dir: 'results'
+  models_dir: 'results/models'
+  plots_dir: 'results/plots'
+  reports_dir: 'results/reports'
+  
+  # Dataset files
+  enhanced_dataset: 'enhanced_combined_dataset.parquet'
+  sentiment_features: 'sentiment_features.parquet'
+  temporal_decay_features: 'temporal_decay_features.parquet'
+  model_ready_data: 'model_ready_data.parquet'
+
+# Data Quality Requirements
+quality_requirements:
+  min_trading_days: 250        # Minimum 1 year of data per symbol
+  min_news_articles: 50        # Minimum articles per symbol
+  max_missing_data_pct: 5      # Maximum 5% missing data
+  min_sentiment_coverage: 0.8  # 80% of days should have sentiment data
+  
+  # Required feature coverage
+  required_technical_indicators: ['EMA_20', 'RSI_14', 'MACD', 'BBW_20', 'VWAP_20']
+  required_sentiment_sources: ['sec_edgar', 'federal_reserve', 'investor_relations', 'bloomberg_twitter']
+
+# Performance and Hardware
+performance:
+  parallel_news_collection: true
+  chunk_size: 1000
+  memory_limit_mb: 4096
+  num_workers: 4
+  persistent_workers: true
+  use_gpu: true
+  mixed_precision: true
+
+# Reproducibility
+random_seed: 42
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  save_logs: true
+  log_file: "enhanced_experiment.log"
+  console_output: true
+  detailed_progress: true
+
+# Error Handling
+error_handling:
+  continue_on_symbol_failure: true
+  max_symbol_failures: 1
+  retry_failed_symbols: true
+  graceful_degradation: true
+  fallback_to_mock_data: true
+
+# Validation and Testing
 validation:
-  # 🎓 Enhanced academic standards validation
-  academic_validation:
-    min_primary_sources: 70              # Minimum % primary sources (increased)
-    require_government_data: true        # Require government data inclusion
-    require_bloomberg_data: true         # Require Bloomberg Twitter data
-    min_source_diversity: 4              # Minimum number of source types (reduced but focused)
-    quality_threshold: 0.88              # Increased minimum overall quality score
-    
-  # Enhanced balance validation
-  balance_validation:
-    temporal_balance_required: true      # Require temporal balance 2018-2024
-    cross_sectional_balance_required: true  # Require stock balance
-    max_yearly_cv: 0.25                  # Max coefficient of variation across years
-    max_stock_cv: 0.15                   # Max coefficient of variation across stocks
-    min_bloomberg_coverage: 0.15         # Minimum Bloomberg coverage across time
-    
-  # Enhanced reproducibility requirements
-  reproducibility:
-    save_random_seeds: true              # Save random seeds
-    version_control_data: true           # Version control data collection
-    export_collection_log: true          # Export detailed collection log
-    validate_source_accessibility: true  # Validate all sources are public
-    balance_methodology_documented: true # Document balancing methodology
-  
-  # Enhanced cross-validation for robustness
-  cross_validation:
-    temporal_cv_folds: 5                 # Time series cross-validation folds
-    min_test_size: 30                    # Minimum test set size
-    validation_method: 'time_series'     # Time series validation method
-    balance_preserved_cv: true           # Preserve balance in CV splits
-
-# ==============================================================================
-# ACADEMIC METADATA (Enhanced)
-# ==============================================================================
-metadata:
-  # 🎓 Enhanced research metadata for academic publication
-  study_info:
-    title: 'Multi-Horizon Financial Forecasting with Balanced High-Quality Sources'
-    methodology: 'Refined academic-grade data collection with temporal and cross-sectional balance'
-    data_collection_approach: 'Primary sources (70%) + research-validated Bloomberg Twitter (20%) + optional fallback (10%)'
-    academic_standards: 'Journal publication quality with balanced temporal coverage 2018-2024'
-    balance_methodology: 'Stratified sampling ensuring equal representation across years and stocks'
-    
-  # Enhanced data provenance
-  provenance:
-    primary_source_percentage_target: 70  # Increased target
-    government_data_inclusion: true       # Government data included
-    bloomberg_validation: true           # Bloomberg research validation confirmed
-    synthetic_data_usage: false          # No synthetic data used
-    mock_data_usage: false               # No mock data used
-    temporal_balance_confirmed: true     # Temporal balance 2018-2024 confirmed
-    cross_sectional_balance_confirmed: true  # Stock balance confirmed
-    
-  # Enhanced citation information
-  citations:
-    data_sources_citable: true           # All sources are citable
-    government_authority: true           # Government data authority (FRED)
-    bloomberg_research_validation: true  # Bloomberg academic research validated
-    primary_source_verification: true   # Primary sources verified
-    reproducible_methodology: true      # Methodology is reproducible
-    balanced_sampling_documented: true  # Balanced sampling methodology documented
-
-# ==============================================================================
-# 🎓 REFINED ACADEMIC CONFIGURATION SUMMARY
-# ==============================================================================
-# ✅ FOCUSED SOURCES: 5 high-quality sources (SEC + FRED + IR + Bloomberg + Optional Yahoo)
-# ✅ BALANCED DATA: Equal representation 2018-2024 + equal stock coverage
-# ✅ PRIMARY FOCUS: 70% primary sources (increased from 55%)
-# ✅ BLOOMBERG INTEGRATION: Research-validated single social media source (20%)
-# ✅ QUALITY OVER QUANTITY: Maximum 3 articles/day, higher relevance thresholds
-# ✅ ACADEMIC STANDARDS: Enhanced quality scores, balance validation, reproducibility
-# ❌ REMOVED: Multiple Twitter sources, mock data, synthetic content
-# ==============================================================================
+  run_data_quality_checks: true
+  validate_technical_indicators: true
+  validate_sentiment_sources: true
+  validate_date_coverage: true
+  validate_feature_completeness: true
