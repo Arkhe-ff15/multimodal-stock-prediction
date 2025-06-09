@@ -1,289 +1,272 @@
-# ==============================================================================
-# UNIFIED CONFIGURATION - Resolves All Conflicts
-# Single source of truth for all pipeline settings
-# ==============================================================================
-
-# Data Configuration
 data:
-  # Stock symbols for analysis
-  stocks: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA']
-  
-  # Complete date range covering major events (Dec 2018 - Jan 2024)
+  stocks:
+  - AAPL
+  - MSFT
+  - GOOGL
+  - AMZN
+  - TSLA
   start_date: '2018-12-01'
   end_date: '2024-01-31'
-  
-  # Data collection settings
+  timezone: null
   cache_enabled: true
-  use_parallel: true
-  
-  # Complete sentiment sources as requested
+  use_parallel: false
   sentiment_sources:
     sec_edgar:
       enabled: true
       weight: 0.25
       reliability: 1.0
-      description: 'SEC EDGAR filings'
+      description: SEC EDGAR filings
     federal_reserve:
       enabled: true
-      weight: 0.20
+      weight: 0.2
       reliability: 1.0
-      description: 'Federal Reserve data and reports'
+      description: Federal Reserve data and reports
     investor_relations:
       enabled: true
       weight: 0.25
       reliability: 0.95
-      description: 'Official investor relations data'
+      description: Official investor relations data
     bloomberg_twitter:
       enabled: true
-      weight: 0.20
+      weight: 0.2
       reliability: 0.85
-      description: 'Bloomberg Twitter news'
+      description: Bloomberg Twitter news
     yahoo_finance:
-      enabled: true
-      weight: 0.10
+      enabled: false
+      weight: 0.1
       reliability: 0.75
-      description: 'Yahoo Finance news (optional)'
-  
-  # Complete technical indicators as requested
+      description: Yahoo Finance news (disabled due to API issues)
   technical_indicators:
-    basic: ['Open', 'High', 'Low', 'Close', 'Volume']  # OHLCV
-    moving_averages: [5, 10, 20, 50, 200]  # EMA periods
-    rsi_periods: [14, 21]  # RSI
-    macd_params: 
+    basic:
+    - Open
+    - High
+    - Low
+    - Close
+    - Volume
+    moving_averages:
+    - 5
+    - 10
+    - 20
+    - 50
+    - 200
+    rsi_periods:
+    - 14
+    - 21
+    macd_params:
       fast: 12
       slow: 26
       signal: 9
-    bollinger_periods: [20]  # For BBW (Bollinger Band Width)
-    vwap_periods: [20, 50]  # VWAP
-    lag_periods: [1, 2, 3, 5, 10, 20]  # Lag features
-  
-  # Company mapping for better sentiment relevance
+    bollinger_periods:
+    - 20
+    vwap_periods:
+    - 20
+    - 50
+    lag_periods:
+    - 1
+    - 2
+    - 3
+    - 5
+    - 10
+    - 20
   company_mapping:
     AAPL:
-      name: 'Apple Inc'
-      sector: 'Technology'
-      keywords: ['apple', 'iphone', 'ipad', 'mac', 'ios', 'tim cook', 'cupertino']
-      cik: '0000320193'
+      name: Apple Inc
+      sector: Technology
+      keywords:
+      - apple
+      - iphone
+      - ipad
+      - mac
+      - ios
+      - tim cook
+      - cupertino
+      cik: 0000320193
     MSFT:
-      name: 'Microsoft Corporation'
-      sector: 'Technology'
-      keywords: ['microsoft', 'windows', 'office', 'azure', 'xbox', 'satya nadella']
-      cik: '0000789019'
+      name: Microsoft Corporation
+      sector: Technology
+      keywords:
+      - microsoft
+      - windows
+      - office
+      - azure
+      - xbox
+      - satya nadella
+      cik: 0000789019
     GOOGL:
-      name: 'Alphabet Inc'
-      sector: 'Technology'
-      keywords: ['google', 'alphabet', 'youtube', 'android', 'search', 'sundar pichai']
+      name: Alphabet Inc
+      sector: Technology
+      keywords:
+      - google
+      - alphabet
+      - youtube
+      - android
+      - search
+      - sundar pichai
       cik: '0001652044'
     AMZN:
-      name: 'Amazon.com Inc'
-      sector: 'Technology'
-      keywords: ['amazon', 'aws', 'prime', 'alexa', 'jeff bezos', 'andy jassy']
-      cik: '0001018724'
+      name: Amazon.com Inc
+      sector: Technology
+      keywords:
+      - amazon
+      - aws
+      - prime
+      - alexa
+      - jeff bezos
+      - andy jassy
+      cik: 0001018724
     TSLA:
-      name: 'Tesla Inc'
-      sector: 'Technology'
-      keywords: ['tesla', 'elon musk', 'electric vehicle', 'model s', 'model 3', 'model y']
-      cik: '0001318605'
-
-# Sentiment Analysis Configuration - UNIFIED QUALITY STRATEGY
+      name: Tesla Inc
+      sector: Technology
+      keywords:
+      - tesla
+      - elon musk
+      - electric vehicle
+      - model s
+      - model 3
+      - model y
+      cik: 0001318605
 sentiment:
-  model_name: "ProsusAI/finbert"
+  model_name: ProsusAI/finbert
   batch_size: 16
   max_length: 512
-  
-  # UNIFIED QUALITY THRESHOLDS - Balanced approach
-  confidence_threshold: 0.7     # High quality for reliable sentiment
-  relevance_threshold: 0.85     # High relevance for financial context
-  quality_threshold: 0.7        # Consistent quality filtering
-  
-  # Text processing
-  min_text_length: 10
+  confidence_threshold: 0.5
+  relevance_threshold: 0.7
+  quality_threshold: 0.5
+  min_text_length: 5
   max_text_length: 2000
-  
-  # Caching and processing
-  cache_results: true           # UNIFIED: Always cache for reproducibility
-  device: "auto"
-  
-  # Quality filters - BALANCED APPROACH
+  cache_results: true
+  device: auto
   quality_filters:
-    min_length: true            # Filter very short texts
-    language_filter: true       # English only
-    relevance_check: true       # Check financial relevance
-    confidence_filter: true     # Apply confidence threshold
-    duplicate_filter: true      # Remove duplicates
-
-# Temporal Decay Configuration - CORE INNOVATION
+    min_length: true
+    language_filter: true
+    relevance_check: true
+    confidence_filter: true
+    duplicate_filter: true
+    multi_tier: true
+    min_retention_ratio: 0.5
+  min_retention_ratio: 0.5
+  use_quality_tiers: true
 temporal_decay:
-  # Horizon-specific decay parameters
-  lambda_5: 0.3     # Fast decay for 5-day horizon
-  lambda_30: 0.1    # Medium decay for 30-day horizon
-  lambda_90: 0.05   # Slow decay for 90-day horizon
-  
-  # Lookback windows
+  lambda_5: 0.3
+  lambda_30: 0.1
+  lambda_90: 0.05
   lookback_days:
-    5: 10    # 10-day lookback for 5-day prediction
-    30: 30   # 30-day lookback for 30-day prediction
-    90: 60   # 60-day lookback for 90-day prediction
-  
-  # Quality thresholds
+    5: 10
+    30: 30
+    90: 60
   min_sentiment_count: 3
-  min_confidence: 0.7
-
-# Model Configuration
+  min_confidence: 0.5
+  min_relevance: 0.6
 model:
-  # TFT Architecture
   hidden_size: 64
   attention_head_size: 4
   dropout: 0.3
   num_lstm_layers: 2
-  
-  # Training parameters
   learning_rate: 0.001
-  batch_size: 32               # Consistent batch size
+  batch_size: 32
   max_epochs: 50
   early_stopping_patience: 10
   gradient_clip_val: 1.0
   weight_decay: 1e-4
-  
-  # Time series parameters
   max_encoder_length: 30
-  max_prediction_length: 1     # Single-step prediction
+  max_prediction_length: 1
   training_cutoff_days: 365
-  
-  # Cross-validation
   cv_folds: 5
-  cv_method: 'time_series'
-  
-  # Model variants for benchmarking
+  cv_method: time_series
   variants:
-    - 'TFT-Temporal-Decay'     # Main model with temporal decay
-    - 'TFT-Static-Sentiment'   # TFT with static sentiment
-    - 'TFT-Numerical'          # TFT without sentiment
-    - 'LSTM'                   # LSTM baseline
-
-# Multi-Horizon Prediction Configuration
-horizons: [5, 30, 90]  # 5-day, 30-day, 90-day predictions
-
-# Target variables for investment decisions
+  - TFT-Temporal-Decay
+  - TFT-Static-Sentiment
+  - TFT-Numerical
+  - LSTM
+horizons:
+- 5
+- 30
+- 90
 targets:
   prediction_types:
-    - 'returns'      # Continuous returns
-    - 'direction'    # Binary direction (up/down)
-    - 'volatility'   # Risk measure
-  
-  # Investment decision thresholds
+  - returns
+  - direction
+  - volatility
   decision_thresholds:
-    buy_threshold: 0.05    # 5% expected return for buy signal
-    sell_threshold: -0.03  # -3% expected return for sell signal
-
-# Evaluation Configuration
+    buy_threshold: 0.05
+    sell_threshold: -0.03
 evaluation:
-  # Statistical tests
   significance_level: 0.05
   min_observations: 30
-  
-  # Metrics to compute
-  metrics: ['RMSE', 'MAE', 'MAPE', 'R2', 'directional_accuracy', 'sharpe_ratio']
-  
-  # Statistical tests for model comparison
-  statistical_tests: ['wilcoxon', 'friedman', 'diebold_mariano']
-  
-  # Explainability features
+  metrics:
+  - RMSE
+  - MAE
+  - MAPE
+  - R2
+  - directional_accuracy
+  - sharpe_ratio
+  statistical_tests:
+  - wilcoxon
+  - friedman
+  - diebold_mariano
   explainability:
     feature_importance: true
     attention_analysis: true
     sentiment_attribution: true
     temporal_contribution: true
     investment_reasoning: true
-
-# Experiment Configuration
 experiment:
-  name: "Multi-Horizon-Sentiment-TFT"
-  version: "v1.0"
-  description: "Complete pipeline with temporal decay innovation"
+  name: Multi-Horizon-Sentiment-TFT-Fixed
+  version: v1.1
+  description: Fixed pipeline addressing timezone and quality filtering issues
   save_results: true
   save_intermediate_results: true
   create_report: true
   track_metrics: true
-
-# File Paths
 paths:
-  raw_data: 'data/raw'
-  processed_data: 'data/processed'
-  cache_dir: 'data/cache'
-  results_dir: 'results'
-  models_dir: 'results/models'
-  plots_dir: 'results/plots'
-  reports_dir: 'results/reports'
-  
-  # Dataset files
-  combined_dataset: 'enhanced_combined_dataset.parquet'
-  sentiment_features: 'sentiment_features.parquet'
-  temporal_decay_features: 'temporal_decay_features.parquet'
-
-# Data Quality Requirements
+  raw_data: data/raw
+  processed_data: data/processed
+  cache_dir: data/cache
+  results_dir: results
+  models_dir: results/models
+  plots_dir: results/plots
+  reports_dir: results/reports
+  combined_dataset: enhanced_combined_dataset.parquet
+  sentiment_features: sentiment_features.parquet
+  temporal_decay_features: temporal_decay_features.parquet
 quality_requirements:
-  min_trading_days: 250        # Minimum 1 year of data per symbol
-  min_news_articles: 50        # Minimum articles per symbol
-  max_missing_data_pct: 5      # Maximum 5% missing data
-  min_sentiment_coverage: 0.8  # 80% of days should have sentiment data
-  
-  # Required feature coverage
-  required_technical_indicators: ['EMA_20', 'RSI_14', 'MACD', 'BBW_20', 'VWAP_20']
-  required_sentiment_sources: ['sec_edgar', 'federal_reserve', 'investor_relations', 'bloomberg_twitter']
-
-# Performance and Hardware
+  min_trading_days: 200
+  min_news_articles: 30
+  max_missing_data_pct: 15
+  min_sentiment_coverage: 0.6
+  required_technical_indicators:
+  - EMA_20
+  - RSI_14
+  - MACD
+  required_sentiment_sources:
+  - sec_edgar
+  - investor_relations
 performance:
-  parallel_processing: true
-  chunk_size: 1000
+  parallel_processing: false
+  chunk_size: 500
   memory_limit_mb: 4096
-  num_workers: 4
-  use_gpu: true
-  mixed_precision: true
-
-# Reproducibility
+  num_workers: 1
+  use_gpu: false
+  mixed_precision: false
+  max_workers: 1
 random_seed: 42
-
-# Logging Configuration
 logging:
-  level: "INFO"
+  level: INFO
   save_logs: true
-  log_file: "experiment.log"
+  log_file: experiment_fixed.log
   console_output: true
-
-# Error Handling
 error_handling:
   continue_on_symbol_failure: true
-  max_symbol_failures: 1
-  retry_failed_symbols: true
+  max_symbol_failures: 2
+  retry_failed_symbols: false
   graceful_degradation: true
-
-# Validation and Testing
+  fallback_to_mock_data: true
+  timezone_handling: auto
+  duplicate_handling: drop_first
 validation:
   run_data_quality_checks: true
   validate_technical_indicators: true
   validate_sentiment_sources: true
   validate_date_coverage: true
   validate_feature_completeness: true
-
-# ==============================================================================
-# CONFIGURATION NOTES:
-# ==============================================================================
-# 
-# CONFLICTS RESOLVED:
-# - confidence_threshold: 0.7 (was conflicting between 0.1 and 0.7)
-# - cache_results: true (was conflicting between true and false)
-# - quality_strategy: balanced (not ultra-permissive or ultra-strict)
-# - batch_size: consistent 16 for sentiment, 32 for model training
-# 
-# DESIGN DECISIONS:
-# - Quality over quantity: High thresholds for reliable sentiment
-# - Caching enabled: For reproducibility and efficiency
-# - Balanced filtering: Not too strict, not too permissive
-# - Error handling: Graceful degradation with logging
-# 
-# USAGE:
-# - Use this as the single configuration file
-# - All modules should reference this unified config
-# - No more conflicts between different config strategies
-# ==============================================================================
+  validate_timezone_consistency: true

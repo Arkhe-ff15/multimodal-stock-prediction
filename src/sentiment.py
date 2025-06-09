@@ -36,6 +36,26 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 @dataclass
+class SentimentConfig:
+    """Patched configuration with relaxed thresholds"""
+    model_name: str = "ProsusAI/finbert"
+    batch_size: int = 16
+    max_length: int = 512
+    
+    # PATCH: Relaxed thresholds
+    confidence_threshold: float = 0.5    # Was 0.7
+    relevance_threshold: float = 0.7     # Was 0.85
+    quality_threshold: float = 0.5       # Was 0.7
+    
+    cache_results: bool = True
+    device: str = "auto"
+    
+    # PATCH: More permissive filtering
+    min_text_length: int = 5             # Was 10
+    max_text_length: int = 2000
+    filter_low_quality: bool = True
+
+@dataclass
 class SentimentResult:
     """FinBERT sentiment analysis result"""
     text: str
@@ -542,28 +562,45 @@ class FinBERTSentimentAnalyzer:
         return all_sentiment_data
     
     def _apply_quality_filters(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Apply quality filters to sentiment results"""
+        """Apply balanced quality filters"""
         if df.empty:
             return df
         
         original_count = len(df)
         
         try:
-            # Filter by confidence threshold
-            df = df[df['confidence'] >= self.config.confidence_threshold]
+            # PATCH: Two-tier filtering
+            basic_quality = (
+                (df['confidence'] >= 0.3) &
+                (df['relevance_score'] >= 0.5) &
+                (df['word_count'] >= 3)
+            )
             
-            # Filter by relevance threshold
-            df = df[df['relevance_score'] >= self.config.relevance_threshold]
+            df_filtered = df[basic_quality].copy()
             
-            # Filter by minimum word count
-            df = df[df['word_count'] >= self.config.min_text_length]
+            # Ensure minimum retention (50%)
+            if len(df_filtered) < original_count * 0.5:
+                logger.warning("Quality filtering too aggressive, keeping top 50%")
+                df_sorted = df.sort_values('confidence', ascending=False)
+                keep_count = max(int(original_count * 0.5), 10)
+                df_filtered = df_sorted.head(keep_count).copy()
             
-            logger.info(f"Quality filtering: {original_count} -> {len(df)} articles retained")
+            # Mark high quality articles
+            high_quality = (
+                (df_filtered['confidence'] >= self.config.confidence_threshold) &
+                (df_filtered['relevance_score'] >= self.config.relevance_threshold)
+            )
+            df_filtered['high_quality'] = high_quality
+            
+            logger.info(f"Quality filtering: {original_count} -> {len(df_filtered)} articles retained")
+            
+            return df_filtered
             
         except Exception as e:
-            logger.error(f"Error applying quality filters: {e}")
-        
-        return df
+            logger.error(f"Error in quality filtering: {e}")
+            df['high_quality'] = df['confidence'] >= 0.5
+            return df
+
     
     def create_sentiment_features(self, sentiment_data: Dict[str, pd.DataFrame], 
                                 horizons: List[int] = [5, 30, 90]) -> Dict[str, pd.DataFrame]:

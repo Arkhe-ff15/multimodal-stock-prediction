@@ -313,7 +313,6 @@ class EnhancedDataCollector:
         return market_data
     
     def _download_enhanced_stock(self, symbol: str) -> Optional[MarketData]:
-        """Download single stock with enhanced indicators"""
         try:
             # Check cache first
             cache_file = self.cache_dir / f"{symbol}_enhanced_market.parquet"
@@ -336,12 +335,23 @@ class EnhancedDataCollector:
             # Download fresh data
             self._rate_limit('yahoo_finance')
             ticker = yf.Ticker(symbol)
-            data = ticker.history(start=self.config['start_date'], end=self.config['end_date'])
-            
+
+            # Convert config dates to proper format
+            start_date = pd.to_datetime(self.config['start_date'])
+            end_date = pd.to_datetime(self.config['end_date'])
+            data = ticker.history(start=start_date, end=end_date)
+
             if data.empty:
                 logger.warning(f"No data from yfinance for {symbol}, using mock data")
                 return self._create_enhanced_mock_data(symbol)
-            
+
+            # PATCH: Fix timezone issues
+            if hasattr(data.index, 'tz') and data.index.tz is not None:
+                data.index = data.index.tz_localize(None)
+
+            # PATCH: Remove duplicates
+            data = data[~data.index.duplicated(keep='first')]
+
             # Validate date range completeness
             expected_start = pd.to_datetime(self.config['start_date'])
             expected_end = pd.to_datetime(self.config['end_date'])
@@ -350,23 +360,23 @@ class EnhancedDataCollector:
             
             if actual_start > expected_start + timedelta(days=30) or actual_end < expected_end - timedelta(days=30):
                 logger.warning(f"{symbol}: Date range incomplete, supplementing with mock data")
-            
+
             # Clean and validate data
             data = self._clean_enhanced_market_data(data)
             if data.empty:
                 logger.warning(f"Data failed cleaning for {symbol}, using mock data")
                 return self._create_enhanced_mock_data(symbol)
-            
+
             # Cache data
             try:
                 data.to_parquet(cache_file)
             except Exception as e:
                 logger.warning(f"Could not cache data for {symbol}: {e}")
-            
+
             # Calculate enhanced technical indicators
             tech_data = self._calculate_enhanced_technical_indicators(data)
             company_info = self.config['company_mapping'].get(symbol, {})
-            
+
             return MarketData(
                 symbol=symbol,
                 data=data,
@@ -375,10 +385,11 @@ class EnhancedDataCollector:
                 company_info=company_info,
                 data_quality_score=self._assess_data_quality(data)
             )
-            
+
         except Exception as e:
             logger.error(f"Error downloading {symbol}: {e}")
             return self._create_enhanced_mock_data(symbol)
+
     
     def _calculate_enhanced_technical_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
         """Calculate complete set of technical indicators as requested"""
@@ -1025,41 +1036,42 @@ class EnhancedDataCollector:
         return df
     
     def _add_multi_horizon_targets(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Add target variables for multiple forecast horizons (5, 30, 90 days)"""
+    
+        # PATCH: Fix duplicate index issues
+        if df.index.duplicated().any():
+            logger.warning("Duplicate dates found, removing duplicates")
+            df = df[~df.index.duplicated(keep='first')]
+        
+        # Sort by symbol and date
+        df = df.sort_values(['symbol', df.index])
+        
         for horizon in [5, 30, 90]:
             try:
-                # Future prices by symbol
-                df[f'target_{horizon}d'] = df.groupby('symbol')['Close'].shift(-horizon)
+                # Simple approach to avoid reindex issues
+                for symbol in df['symbol'].unique():
+                    mask = df['symbol'] == symbol
+                    symbol_data = df[mask].copy()
+                    
+                    # Calculate targets using shift
+                    df.loc[mask, f'target_{horizon}d'] = symbol_data['Close'].shift(-horizon)
+                    df.loc[mask, f'return_{horizon}d'] = (
+                        df.loc[mask, f'target_{horizon}d'] / symbol_data['Close'] - 1
+                    )
+                    df.loc[mask, f'direction_{horizon}d'] = (
+                        df.loc[mask, f'return_{horizon}d'] > 0
+                    ).astype(int)
                 
-                # Future returns
-                df[f'return_{horizon}d'] = (
-                    df[f'target_{horizon}d'] / df['Close'] - 1
-                )
-                
-                # Direction (binary classification target)
-                df[f'direction_{horizon}d'] = (
-                    df[f'return_{horizon}d'] > 0
-                ).astype(int)
-                
-                # Volatility target (for risk modeling)
-                df[f'volatility_{horizon}d'] = df.groupby('symbol')['Daily_Return'].rolling(
-                    horizon, min_periods=horizon//2
-                ).std().reset_index(0, drop=True).shift(-horizon)
-                
-                # High/Low targets for range prediction
-                df[f'high_{horizon}d'] = df.groupby('symbol')['High'].rolling(
-                    horizon, min_periods=1
-                ).max().reset_index(0, drop=True).shift(-horizon)
-                
-                df[f'low_{horizon}d'] = df.groupby('symbol')['Low'].rolling(
-                    horizon, min_periods=1
-                ).min().reset_index(0, drop=True).shift(-horizon)
+                logger.info(f"✅ Created target variables for horizon {horizon}")
                 
             except Exception as e:
-                logger.warning(f"Error creating target variables for horizon {horizon}: {e}")
+                logger.error(f"Error creating targets for horizon {horizon}: {e}")
+                # Create dummy targets
+                df[f'target_{horizon}d'] = np.nan
+                df[f'return_{horizon}d'] = np.nan
+                df[f'direction_{horizon}d'] = 0
         
         return df
-    
+        
     def _validate_data_completeness(self, df: pd.DataFrame) -> pd.DataFrame:
         """Validate data completeness according to requirements"""
         logger.info("Validating data completeness...")
@@ -1285,8 +1297,8 @@ class DataCollector(EnhancedDataCollector):
         return self.collect_enhanced_news_data(symbols)
     
     def create_combined_dataset(self, market_data: Dict[str, MarketData], 
-                               news_data: Dict[str, List[NewsArticle]],
-                               save_path: str = None) -> pd.DataFrame:
+                                news_data: Dict[str, List[NewsArticle]],
+                                save_path: str = None) -> pd.DataFrame:
         """Create combined dataset using enhanced methods"""
         return self.create_enhanced_combined_dataset(market_data, news_data, save_path)
 
