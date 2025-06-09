@@ -6,6 +6,7 @@ data/sentiment/
 data/cache
 *.csv
 *.parquet
+fnspid_data/
 
 backup*
 # Model checkpoints
@@ -45,4 +46,6 @@ experiment.log
 
 # Temporary files
 tmp/
-temp/
+temp/fnspid_data/
+data/cache/
+*.parquet

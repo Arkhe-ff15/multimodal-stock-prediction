@@ -50,3 +50,5 @@ jupyter>=1.0.0
 # - concurrent.futures (built into Python 3.2+)
 # - threading (built into Python)
 # - pathlib (built into Python 3.4+)
+requests>=2.31.0
+pyarrow>=12.0.0

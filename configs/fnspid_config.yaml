@@ -1,0 +1,5 @@
+fnspid:
+  data_dir: "./fnspid_data"
+  start_date: "2018-12-01"
+  end_date: "2024-01-31"
+  target_symbols: ['AAPL', 'MSFT', 'TSLA', 'GOOGL', 'AMZN', 'META', 'NVDA', 'JPM', 'JNJ', 'V']
