@@ -1,0 +1,487 @@
+# ===================================================================
+# Multi-Horizon Sentiment-Enhanced TFT with Temporal Decay
+# ULTIMATE CONFIGURATION FILE
+# ===================================================================
+# 
+# This config consolidates and improves upon:
+# - configs/fnspid_config.yaml (5 lines)
+# - configs/unified_config.yaml (196 lines)
+# 
+# Focus: Temporal decay mechanism for financial sentiment analysis
+# Innovation: Horizon-specific sentiment weighting with exponential decay
+# ===================================================================
+
+# -------------------------------------------------------------------
+# EXPERIMENT METADATA
+# -------------------------------------------------------------------
+experiment:
+  name: "Multi-Horizon-Sentiment-TFT-Temporal-Decay"
+  version: "v2.0"
+  description: "Temporal decay mechanism for financial sentiment analysis"
+  author: "Your Name"
+  created: "2024-06-10"
+  
+  # Research Question
+  research_question: "Does temporal decay improve stock prediction over static sentiment?"
+  
+  # Innovation Summary
+  innovation: "Horizon-specific exponential decay: sentiment_weighted = Σ(sentiment_i × exp(-λ_h × age_i))"
+
+# -------------------------------------------------------------------
+# CORE DATA CONFIGURATION
+# -------------------------------------------------------------------
+data:
+  # Target Securities (8 stocks - optimal for temporal decay analysis)
+  symbols: ['AAPL', 'MSFT', 'TSLA', 'GOOGL', 'AMZN', 'META', 'NVDA', 'JPM']
+  
+  # Time Period (6+ years for robust temporal analysis)
+  start_date: '2018-12-01'  # Dec 2018 - start of stable period
+  end_date: '2024-01-31'    # Jan 2024 - end of available data
+  fnspid_data_dir: 'data/processed'
+  
+  # Data Management
+  cache_enabled: true
+  cache_dir: 'data/cache'
+  parallel_processing: true
+  max_workers: 4
+  
+  # Data Quality Requirements
+  min_trading_days: 200        # Minimum 1 year per symbol
+  min_news_articles: 50        # Minimum news coverage
+  max_missing_data_pct: 10     # Max 10% missing data allowed
+  min_sentiment_coverage: 0.6  # 60% of days must have sentiment
+  
+  # Lag Features (for temporal context)
+  lag_periods: [1, 2, 3, 5, 10]
+  
+  # Technical Indicators (Essential for financial prediction)
+  technical_indicators:
+    # Core OHLCV (always included)
+    basic: ['Open', 'High', 'Low', 'Close', 'Volume']
+    
+    # Moving Averages (trend analysis)
+    ema_periods: [12, 26, 50]     # Exponential Moving Average
+    sma_periods: [20]             # Simple Moving Average for Bollinger Bands
+    
+    # Momentum Indicators
+    rsi_periods: [14]             # Relative Strength Index
+    
+    # Volatility Indicators
+    bollinger_periods: [20]       # Bollinger Bands
+    bollinger_std: 2             # Standard deviations
+    
+    # Volume Analysis
+    vwap_periods: [20, 50]        # Volume Weighted Average Price
+    
+    # Trend Following
+    macd_params:                  # Moving Average Convergence Divergence
+      fast: 12
+      slow: 26
+      signal: 9
+    
+    # Returns Calculation
+    return_periods: [1, 5, 10, 20]  # Return calculation windows
+    volatility_windows: [5, 20, 60]  # Volatility estimation windows
+
+  # Company Information (for sentiment relevance)
+  company_mapping:
+    AAPL:
+      name: "Apple Inc"
+      sector: "Technology"
+      market_cap: "Large"
+      keywords: ['apple', 'iphone', 'ipad', 'mac', 'ios', 'tim cook', 'cupertino']
+      cik: '0000320193'
+    MSFT:
+      name: "Microsoft Corporation"
+      sector: "Technology"
+      market_cap: "Large"
+      keywords: ['microsoft', 'windows', 'office', 'azure', 'xbox', 'satya nadella']
+      cik: '0000789019'
+    TSLA:
+      name: "Tesla Inc"
+      sector: "Automotive/Technology"
+      market_cap: "Large"
+      keywords: ['tesla', 'elon musk', 'electric vehicle', 'model s', 'model 3', 'model y', 'autopilot']
+      cik: '0001318605'
+    GOOGL:
+      name: "Alphabet Inc"
+      sector: "Technology"
+      market_cap: "Large"
+      keywords: ['google', 'alphabet', 'youtube', 'android', 'search', 'sundar pichai']
+      cik: '0001652044'
+    AMZN:
+      name: "Amazon.com Inc"
+      sector: "Technology/Retail"
+      market_cap: "Large"
+      keywords: ['amazon', 'aws', 'prime', 'alexa', 'jeff bezos', 'andy jassy']
+      cik: '0001018724'
+    META:
+      name: "Meta Platforms Inc"
+      sector: "Technology"
+      market_cap: "Large"
+      keywords: ['meta', 'facebook', 'instagram', 'whatsapp', 'mark zuckerberg', 'metaverse']
+      cik: '0001326801'
+    NVDA:
+      name: "NVIDIA Corporation"
+      sector: "Technology"
+      market_cap: "Large"
+      keywords: ['nvidia', 'gpu', 'ai', 'machine learning', 'jensen huang', 'cuda']
+      cik: '0001045810'
+    JPM:
+      name: "JPMorgan Chase & Co"
+      sector: "Financial Services"
+      market_cap: "Large"
+      keywords: ['jpmorgan', 'chase', 'jamie dimon', 'investment banking', 'commercial banking']
+      cik: '0000019617'
+
+# -------------------------------------------------------------------
+# SENTIMENT ANALYSIS CONFIGURATION (FinBERT)
+# -------------------------------------------------------------------
+sentiment:
+  # Model Configuration
+  model_name: 'ProsusAI/finbert'    # State-of-the-art financial sentiment
+  device: 'auto'                    # Auto-detect GPU/CPU
+  
+  # Processing Parameters
+  batch_size: 16                    # Balanced for memory/speed
+  max_length: 512                   # BERT token limit
+  
+  # Quality Filters (prevent noise in temporal decay)
+  confidence_threshold: 0.7         # Minimum prediction confidence
+  relevance_threshold: 0.85         # Minimum content relevance
+  quality_threshold: 0.7            # Overall quality threshold
+  
+  # Text Processing
+  min_text_length: 10               # Minimum characters
+  max_text_length: 2000             # Maximum characters
+  remove_duplicates: true           # Remove duplicate articles
+  language_filter: 'en'             # English only
+  
+  # Caching (for reproducibility)
+  cache_results: true
+  cache_compression: true           # Compress cached files
+  
+  # Multi-tier Quality System
+  quality_tiers:
+    tier_1:  # High quality
+      confidence_min: 0.85
+      relevance_min: 0.90
+      weight: 1.0
+    tier_2:  # Medium quality
+      confidence_min: 0.70
+      relevance_min: 0.80
+      weight: 0.8
+    tier_3:  # Low quality (filtered out)
+      confidence_min: 0.50
+      relevance_min: 0.70
+      weight: 0.0
+  
+  # Fallback Configuration
+  fallback_enabled: true            # Use keyword-based if FinBERT fails
+  fallback_keywords:
+    positive: ['growth', 'profit', 'beat', 'strong', 'bullish', 'upgrade', 'outperform']
+    negative: ['loss', 'miss', 'weak', 'bearish', 'downgrade', 'underperform', 'decline']
+
+# -------------------------------------------------------------------
+# TEMPORAL DECAY CONFIGURATION (YOUR INNOVATION!)
+# -------------------------------------------------------------------
+temporal_decay:
+  # Core Innovation: Horizon-specific decay parameters
+  # Formula: sentiment_weighted = Σ(sentiment_i × exp(-λ_h × age_i))
+  
+  # Prediction Horizons (days)
+  horizons: [5, 30, 90]
+  
+  # Decay Parameters (λ_h) - TUNED FOR FINANCIAL MARKETS
+  # Higher λ = faster decay (recent sentiment matters more)
+  # Lower λ = slower decay (historical sentiment persists)
+  decay_params:
+    5:   # 5-day predictions
+      lambda_decay: 0.3            # Fast decay - news cycle is ~3-5 days
+      lookback_days: 10            # Look back 2 weeks
+      description: "Short-term predictions - recent news dominates"
+    30:  # 30-day predictions  
+      lambda_decay: 0.1            # Medium decay - earnings cycle influence
+      lookback_days: 30            # Look back 1 month
+      description: "Medium-term predictions - earnings and events matter"
+    90:  # 90-day predictions
+      lambda_decay: 0.05           # Slow decay - fundamental trends persist
+      lookback_days: 60            # Look back 2 months
+      description: "Long-term predictions - structural sentiment trends"
+  
+  # Quality Requirements (prevent overfitting)
+  min_sentiment_count: 3            # Minimum articles for reliable sentiment
+  min_confidence: 0.7               # Minimum confidence for inclusion
+  min_relevance: 0.8                # Minimum relevance for inclusion
+  
+  # Weighting Strategy
+  confidence_weighting: true        # Weight by prediction confidence
+  recency_boost: 1.2               # Boost factor for same-day news
+  source_weighting: true           # Weight by source reliability
+  
+  # Validation and Overfitting Prevention
+  cross_validation_folds: 5         # Time series CV folds
+  validation_split: 0.2            # Validation set size
+  early_stopping_patience: 10      # Stop if no improvement
+  
+  # Statistical Validation
+  significance_level: 0.05          # Alpha for statistical tests
+  min_observations: 30             # Minimum for statistical significance
+  
+  # Decay Function Options (for experimentation)
+  decay_functions:
+    exponential:                   # Primary: exp(-λt)
+      enabled: true
+      description: "Standard exponential decay"
+    linear:                        # Alternative: max(0, 1-αt)
+      enabled: false
+      alpha_params: [0.01, 0.05, 0.1]
+    power:                         # Alternative: t^(-β)
+      enabled: false
+      beta_params: [0.5, 1.0, 1.5]
+
+# -------------------------------------------------------------------
+# MODEL CONFIGURATION (TFT Architecture)
+# -------------------------------------------------------------------
+model:
+  # Model Architecture
+  hidden_size: 64                   # Hidden dimension
+  attention_head_size: 4            # Multi-head attention
+  dropout: 0.3                     # Regularization
+  num_lstm_layers: 2               # LSTM depth
+  
+  # Training Configuration
+  learning_rate: 0.001             # Adam optimizer
+  batch_size: 32                   # Training batch size
+  max_epochs: 50                   # Maximum training epochs
+  early_stopping_patience: 10     # Early stopping patience
+  gradient_clip_val: 1.0           # Gradient clipping
+  weight_decay: 1e-4               # L2 regularization
+  
+  # Learning Rate Scheduling
+  lr_scheduler:
+    type: 'ReduceLROnPlateau'
+    factor: 0.5
+    patience: 5
+    min_lr: 1e-6
+  
+  # Sequence Configuration
+  max_encoder_length: 30           # Input sequence length
+  max_prediction_length: 1        # Output sequence length (single-step)
+  
+  # Model Variants (for comparison)
+  variants:
+    - name: 'TFT-Temporal-Decay'
+      description: "Main model with temporal decay innovation"
+      use_temporal_decay: true
+      use_sentiment: true
+      use_technical: true
+    - name: 'TFT-Static-Sentiment'
+      description: "Baseline with static sentiment aggregation"
+      use_temporal_decay: false
+      use_sentiment: true
+      use_technical: true
+    - name: 'TFT-Numerical-Only'
+      description: "Technical indicators only (no sentiment)"
+      use_temporal_decay: false
+      use_sentiment: false
+      use_technical: true
+    - name: 'LSTM-Baseline'
+      description: "Simple LSTM baseline"
+      architecture: 'lstm'
+      use_temporal_decay: false
+      use_sentiment: true
+      use_technical: true
+  
+  # Regularization (overfitting prevention)
+  regularization:
+    dropout_rates:
+      input: 0.1
+      hidden: 0.3
+      output: 0.1
+    batch_normalization: true
+    layer_normalization: true
+    label_smoothing: 0.0
+    mixup_alpha: 0.0
+
+# -------------------------------------------------------------------
+# EVALUATION CONFIGURATION
+# -------------------------------------------------------------------
+evaluation:
+  # Primary Metrics
+  metrics:
+    regression: ['RMSE', 'MAE', 'MAPE', 'R2']
+    classification: ['accuracy', 'precision', 'recall', 'f1']
+    financial: ['directional_accuracy', 'sharpe_ratio', 'max_drawdown']
+  
+  # Cross-Validation
+  cv_method: 'time_series'         # Time series split
+  cv_folds: 5                      # Number of folds
+  test_size: 0.2                   # Test set proportion
+  validation_size: 0.2             # Validation set proportion
+  
+  # Statistical Testing
+  significance_tests:
+    - 'wilcoxon'                   # Paired comparison
+    - 'friedman'                   # Multiple models
+    - 'diebold_mariano'           # Forecast accuracy
+  significance_level: 0.05
+  
+  # Performance Tracking
+  track_training_curves: true
+  save_predictions: true
+  save_feature_importance: true
+  
+  # Benchmarking
+  benchmarks:
+    - 'naive_forecast'             # Previous value
+    - 'moving_average'             # Simple MA
+    - 'linear_regression'          # Linear baseline
+  
+  # Financial Evaluation
+  transaction_costs: 0.001         # 0.1% transaction cost
+  risk_free_rate: 0.02            # 2% annual risk-free rate
+
+# -------------------------------------------------------------------
+# FILE PATHS AND STORAGE
+# -------------------------------------------------------------------
+paths:
+  # Data Directories
+  data_dir: 'data'
+  raw_data_dir: 'data/raw'
+  processed_data_dir: 'data/processed'
+  cache_dir: 'data/cache'
+  
+  # Output Directories
+  results_dir: 'results'
+  models_dir: 'results/models'
+  plots_dir: 'results/plots'
+  reports_dir: 'results/reports'
+  logs_dir: 'logs'
+  
+  # Specific Files
+  combined_dataset: 'data/processed/combined_dataset.parquet'
+  sentiment_features: 'data/processed/sentiment_features.parquet'
+  temporal_decay_features: 'data/processed/temporal_decay_features.parquet'
+  
+  # External Data Sources
+  fnspid_data_dir: 'data/processed'
+  news_data_file: 'data/raw/news_data.csv'
+  stock_data_file: 'data/raw/stock_data.csv'
+
+# -------------------------------------------------------------------
+# LOGGING AND MONITORING
+# -------------------------------------------------------------------
+logging:
+  level: 'INFO'                    # Logging level
+  save_logs: true
+  log_file: 'experiment.log'
+  console_output: true
+  
+  # Structured Logging
+  log_format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  rotation: 'daily'
+  max_size: '100MB'
+  backup_count: 10
+  
+  # Progress Tracking
+  progress_bars: true
+  checkpoint_frequency: 10         # Save every N epochs
+  
+  # Experiment Tracking (optional integrations)
+  wandb:
+    enabled: false
+    project: 'temporal-decay-sentiment'
+    entity: 'your-username'
+  
+  mlflow:
+    enabled: false
+    tracking_uri: 'file:./mlruns'
+
+# -------------------------------------------------------------------
+# PERFORMANCE AND OPTIMIZATION
+# -------------------------------------------------------------------
+performance:
+  # Parallel Processing
+  use_parallel: true
+  max_workers: 4
+  
+  # Memory Management
+  batch_processing: true
+  chunk_size: 1000
+  memory_limit_gb: 8
+  
+  # GPU Configuration
+  use_gpu: true
+  mixed_precision: true            # For GPU speedup
+  gpu_memory_fraction: 0.8
+  
+  # Caching Strategy
+  cache_level: 'aggressive'        # 'none', 'basic', 'aggressive'
+  cache_compression: true
+
+# -------------------------------------------------------------------
+# RANDOM SEEDS (for reproducibility)
+# -------------------------------------------------------------------
+random_seed: 42
+torch_seed: 42
+numpy_seed: 42
+python_seed: 42
+
+# -------------------------------------------------------------------
+# ENVIRONMENT AND DEPENDENCIES
+# -------------------------------------------------------------------
+environment:
+  python_version: ">=3.8"
+  pytorch_version: ">=2.0.0"
+  transformers_version: ">=4.30.0"
+  
+  # Optional GPU requirements
+  cuda_version: ">=11.8"
+  gpu_memory_gb: 8
+
+# -------------------------------------------------------------------
+# EXPERIMENTAL VARIANTS (for research)
+# -------------------------------------------------------------------
+experiments:
+  # Ablation Studies
+  ablations:
+    - name: "no_temporal_decay"
+      temporal_decay.horizons: []
+    - name: "single_horizon"
+      temporal_decay.horizons: [30]
+    - name: "fast_decay_only"
+      temporal_decay.decay_params.30.lambda_decay: 0.3
+      temporal_decay.decay_params.90.lambda_decay: 0.3
+  
+  # Hyperparameter Sweeps
+  hyperparameter_sweeps:
+    lambda_values: [0.01, 0.05, 0.1, 0.2, 0.3, 0.5]
+    lookback_windows: [5, 10, 20, 30, 60, 90]
+    confidence_thresholds: [0.5, 0.6, 0.7, 0.8, 0.9]
+
+# -------------------------------------------------------------------
+# PRODUCTION SETTINGS
+# -------------------------------------------------------------------
+production:
+  # Model Serving
+  model_serving:
+    batch_size: 1
+    max_latency_ms: 100
+    cache_predictions: true
+  
+  # Data Pipeline
+  real_time_processing: false
+  update_frequency: 'daily'
+  data_validation: true
+  
+  # Monitoring
+  performance_monitoring: true
+  drift_detection: true
+  alert_thresholds:
+    accuracy_drop: 0.05
+    latency_increase: 2.0
+
+# ===================================================================
+# END OF CONFIGURATION
+# ===================================================================

@@ -1,12 +1,15 @@
 # Data files
+Data/
 data/raw/
 data/processed/
 data/news/
 data/sentiment/
 data/cache
+fnspid_data/
+archive/
+results/
 *.csv
 *.parquet
-fnspid_data/
 
 backup*
 # Model checkpoints
