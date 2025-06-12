@@ -16,18 +16,22 @@ import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
-import lightning.pytorch as pl
-from torch.utils.data import DataLoader, Dataset
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any, Union
+from torch.utils.data import Dataset, DataLoader  # Add this import
+import pytorch_lightning as pl
+from pytorch_forecasting import TemporalFusionTransformer, TimeSeriesDataSet
+from pytorch_forecasting.metrics import QuantileLoss
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple, Any
 import logging
 import pickle
 import json
 import warnings
 from datetime import datetime
 import os
+from pathlib import Path  # Add this for Path handling
+from sklearn.preprocessing import StandardScaler  # Add this for LSTM scaling
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score  # Add these for metrics
+
 
 # Technical Analysis - FIXED: Use correct 'ta' library, not 'talib'
 try:
@@ -56,10 +60,7 @@ logger = logging.getLogger(__name__)
 # =========================================================================
 
 def add_technical_indicators(data: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add comprehensive technical indicators using the 'ta' library
-    FIXED: Matches user's exact implementation with proper error handling
-    """
+    """Add technical indicators and target columns"""
     if not TA_AVAILABLE:
         logger.warning("⚠️ Technical indicators skipped - 'ta' library not available")
         return data
@@ -95,19 +96,24 @@ def add_technical_indicators(data: pd.DataFrame) -> pd.DataFrame:
         data['gap'] = (data['open'] - data['close'].shift(1)) / data['close'].shift(1)
         data['intraday_return'] = (data['close'] - data['open']) / data['open']
         
-        # FIXED: Proper handling of infinite values and NaNs
-        # Replace infinite values with NaN first
+        # Add target columns for different horizons
+        for horizon in [5, 30, 90]:
+            # Future returns
+            data[f'target_{horizon}d'] = data.groupby('symbol')['close'].shift(-horizon).pct_change(periods=horizon)
+            
+            # Ensure correct naming expected by TFT
+            if horizon == 5:
+                data['target_5'] = data['target_5d']
+                
+        # Clean up NaN and infinite values
         data = data.replace([np.inf, -np.inf], np.nan)
-        
-        # Forward fill then backward fill, finally fill remaining with 0
         data = data.fillna(method='ffill').fillna(method='bfill').fillna(0)
         
-        logger.info(f"✅ Technical indicators added successfully")
+        logger.info(f"✅ Technical indicators and targets added successfully")
         return data
         
     except Exception as e:
         logger.error(f"❌ Error adding technical indicators: {e}")
-        # Return original data if technical indicators fail
         return data
 
 # =========================================================================
@@ -517,7 +523,7 @@ class LSTMForecaster(BaseForecaster):
             patience_counter = 0
             patience = 15
             
-            start_time = datetime.now()
+            start_time = datetime.now();
             
             for epoch in range(self.max_epochs):
                 # Training phase
@@ -992,43 +998,159 @@ class TFTForecaster(BaseForecaster):
             return {}
 
 class BaselineTFT(TFTForecaster):
-    """Baseline TFT model (technical indicators only) with fixed feature selection"""
-    
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        logger.info("🎯 Initialized Baseline TFT (technical indicators only)")
+    """Baseline TFT model using only technical indicators"""
     
     def get_feature_columns(self, data: pd.DataFrame) -> Tuple[List[str], List[str], List[str], List[str]]:
-        """Define feature columns for baseline TFT - FIXED to match technical indicators"""
-        # Stock features
-        stock_features = ['open', 'high', 'low', 'close', 'volume']
+        """Define technical-only features for TFT"""
+        static_categoricals = ['symbol']
+        static_reals = []
+        time_varying_known_reals = ['time_idx']
         
-        # Technical indicators - FIXED: Match exact patterns from add_technical_indicators
-        technical_patterns = [
-            'returns', 'log_returns', 'volatility',
-            'sma_', 'ema_', 'rsi', 'macd', 'bb_',
-            'volume_sma', 'volume_ratio', 'price_position',
-            'gap', 'intraday_return'
+        # Technical features only
+        time_varying_unknown_reals = [
+            # OHLCV
+            'open', 'high', 'low', 'close', 'volume',
+            
+            # Returns & Volatility
+            'returns', 'log_returns', 'volatility_20d',
+            
+            # Moving Averages
+            *[f'sma_{p}' for p in [5, 10, 20, 50]],
+            *[f'ema_{p}' for p in [5, 10, 20, 50]],
+            
+            # RSI
+            'rsi',   # 14-period RSI
+            
+            # MACD
+            'macd',  # MACD difference
+            
+            # Bollinger Bands
+            'bb_upper', 'bb_lower', 'bb_width',
+            
+            # Volume Analysis
+            'volume_sma', 'volume_ratio',
+            
+            # Price Position & Additional
+            'price_position', 'gap', 'intraday_return',
+            
+            # Lag features for key indicators
+            'close_lag_1', 'volume_lag_1', 'returns_lag_1',
+            'close_lag_5', 'volume_lag_5', 'returns_lag_5',
+            'close_lag_10', 'volume_lag_10', 'returns_lag_10',
+            
+            # Target column (required by TFT)
+            'target_5'  # Primary target for 5-day horizon
         ]
         
-        technical_features = []
-        for col in data.columns:
-            if any(pattern in col for pattern in technical_patterns):
-                technical_features.append(col)
+        # Validate features exist
+        time_varying_unknown_reals = [col for col in time_varying_unknown_reals 
+                                    if col in data.columns]
         
-        # Combine and filter
-        all_features = stock_features + technical_features
-        time_varying_unknown_reals = [col for col in all_features if col in data.columns]
+        # Verify target column exists
+        if 'target_5' not in data.columns:
+            logger.error("❌ Target column 'target_5' not found in data")
+            raise ValueError("Missing required target column 'target_5'")
         
-        static_categoricals = ['symbol'] if 'symbol' in data.columns else []
-        static_reals = []
-        time_varying_known_reals = []
-        
-        logger.info(f"📊 Baseline TFT: {len(time_varying_unknown_reals)} features")
-        logger.info(f"   📈 Stock: {len([f for f in stock_features if f in data.columns])}")
-        logger.info(f"   🔧 Technical: {len(technical_features)}")
+        # Validate no sentiment features
+        sentiment_patterns = ['sentiment', 'finbert', 'news', 'article']
+        if any(col for col in data.columns if any(pattern in col.lower() for pattern in sentiment_patterns)):
+            logger.warning("⚠️ Sentiment features found in data - excluded from baseline")
         
         return static_categoricals, static_reals, time_varying_known_reals, time_varying_unknown_reals
+
+    def prepare_data(self, data: pd.DataFrame) -> Tuple[TimeSeriesDataSet, TimeSeriesDataSet]:
+        """Prepare data for TFT with proper target handling"""
+        logger.info("📊 Preparing TFT data...")
+        
+        try:
+            # Reset index and create a clean copy
+            data = data.copy()
+            if isinstance(data.index, pd.DatetimeIndex):
+                data = data.reset_index()
+            
+            # Ensure proper date handling
+            if 'date' in data.columns:
+                data['date'] = pd.to_datetime(data['date'])
+            
+            # Sort by symbol and date
+            data = data.sort_values(['symbol', 'date'])
+            
+            # Create unique time index per symbol
+            data['time_idx'] = data.groupby('symbol').cumcount()
+            
+            # Add technical indicators if needed
+            data = add_technical_indicators(data)
+            
+            # Clean data - FIXED: More aggressive cleaning
+            data = data.replace([np.inf, -np.inf], np.nan)
+            
+            # Remove symbols with too many missing values
+            target_coverage = data.groupby('symbol')['target_5'].apply(
+                lambda x: x.notna().mean()
+            )
+            valid_symbols = target_coverage[target_coverage >= 0.5].index
+            data = data[data['symbol'].isin(valid_symbols)]
+            
+            # Forward fill within remaining symbol groups
+            data = data.groupby('symbol').apply(
+                lambda x: x.fillna(method='ffill').fillna(method='bfill')
+            ).reset_index(drop=True)
+            
+            # Final cleanup of any remaining NaN
+            data = data.dropna(subset=['target_5'])
+            
+            logger.info(f"🧹 Data cleaned: {len(data)} rows remaining")
+            logger.info(f"   🎯 Valid target values: {data['target_5'].notna().sum()}")
+            logger.info(f"   🏢 Valid symbols: {len(valid_symbols)}")
+            
+            # Create unique row identifier
+            data['unique_id'] = data['symbol'] + '_' + data['time_idx'].astype(str)
+            data = data.set_index('unique_id')
+            
+            # Get feature columns
+            static_categoricals, static_reals, time_varying_known_reals, time_varying_unknown_reals = \
+                self.get_feature_columns(data)
+            
+            # Determine validation cutoff
+            max_prediction_idx = data['time_idx'].max()
+            valid_idx = int(max_prediction_idx * 0.8)
+            logger.info(f"📅 Validation cutoff: time_idx <= {valid_idx}")
+            
+            # Create training dataset with cleaned data
+            training = TimeSeriesDataSet(
+                data[lambda x: x.time_idx <= valid_idx],
+                time_idx="time_idx",
+                target="target_5",
+                group_ids=['symbol'],
+                min_encoder_length=self.max_encoder_length // 2,
+                max_encoder_length=self.max_encoder_length,
+                min_prediction_length=1,
+                max_prediction_length=self.max_prediction_length,
+                static_categoricals=static_categoricals,
+                time_varying_known_reals=time_varying_known_reals,
+                time_varying_unknown_reals=time_varying_unknown_reals,
+                target_normalizer=GroupNormalizer(
+                    groups=['symbol'],
+                    transformation="softplus"
+                ),
+                add_relative_time_idx=True,
+                add_target_scales=True,
+                allow_missing_timesteps=True
+            )
+            
+            # Create validation dataset
+            validation = TimeSeriesDataSet.from_dataset(
+                training,
+                data,
+                min_prediction_idx=valid_idx + 1,
+                stop_randomization=True
+            )
+            
+            return training, validation
+            
+        except Exception as e:
+            logger.error(f"❌ Error preparing TFT data: {e}")
+            raise
 
 class SentimentTFT(TFTForecaster):
     """Sentiment-enhanced TFT model with proper feature integration"""
@@ -1210,6 +1332,31 @@ def load_and_prepare_data(data_path: str) -> pd.DataFrame:
         logger.error(f"❌ Error loading data: {e}")
         raise
 
+def validate_technical_features(data: pd.DataFrame) -> bool:
+    """Validate that only technical features are present"""
+    technical_patterns = [
+        'open', 'high', 'low', 'close', 'volume',  # OHLCV
+        'returns', 'log_returns', 'volatility',     # Returns
+        'sma_', 'ema_', 'rsi', 'macd', 'bb_',      # Technical
+        'volume_sma', 'volume_ratio',               # Volume
+        'price_position', 'gap', 'intraday',        # Price
+        '_lag_'                                     # Lags
+    ]
+    
+    forbidden_patterns = ['sentiment', 'finbert', 'news', 'article']
+    
+    # Check for forbidden patterns
+    for col in data.columns:
+        if any(pattern in col.lower() for pattern in forbidden_patterns):
+            logger.error(f"❌ Found sentiment feature: {col}")
+            return False
+            
+        if not any(pattern in col.lower() for pattern in technical_patterns):
+            if col not in ['symbol', 'date', 'time_idx']:
+                logger.warning(f"⚠️ Unknown feature type: {col}")
+    
+    return True
+
 # Additional integration functions remain the same as in the previous artifact
 # but with enhanced error handling throughout...
 
@@ -1327,3 +1474,55 @@ Installation order for best compatibility:
 4. pip install ta pandas numpy scikit-learn
 5. pip install matplotlib seaborn plotly jupyter
 """
+
+@dataclass 
+class ModelConfig:
+    """Configuration for model training"""
+    name: str
+    type: str = "TFT"  # TFT, LSTM, etc.
+    max_epochs: int = 50
+    batch_size: int = 32
+    learning_rate: float = 0.001
+    hidden_size: int = 64
+    dropout: float = 0.1
+    max_encoder_length: int = 30
+    max_prediction_length: int = 5
+    early_stopping_patience: int = 10
+    
+    def __post_init__(self):
+        """Validate configuration"""
+        if self.type not in ["TFT", "LSTM"]:
+            raise ValueError(f"Invalid model type: {self.type}")
+
+class ModelTrainer:
+    """Trains and manages TFT models for different prediction horizons"""
+    
+    def __init__(self, config: ModelConfig):
+        self.config = config
+        self.models = {}
+        self.histories = {}
+        self.logger = logging.getLogger(__name__)
+        
+    def train(self, data: pd.DataFrame, horizons: List[int]) -> Dict[str, Any]:
+        """Train models for each horizon"""
+        results = {}
+        
+        for horizon in horizons:
+            try:
+                self.logger.info(f"🎯 Training model for {horizon}d horizon...")
+                model, history = self._train_single_horizon(data, horizon)
+                results[f"{horizon}d"] = {
+                    "model": model,
+                    "history": history,
+                    "final_val_loss": min(history["val_loss"]) if history else None
+                }
+            except Exception as e:
+                self.logger.error(f"❌ Failed training {horizon}d horizon: {e}")
+                results[f"{horizon}d"] = {"error": str(e)}
+                
+        return results
+        
+    def _train_single_horizon(self, data: pd.DataFrame, horizon: int):
+        """Train model for a single prediction horizon"""
+        # Implementation depends on your specific TFT setup
+        pass

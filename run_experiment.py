@@ -34,6 +34,7 @@ import seaborn as sns
 from dataclasses import dataclass, asdict
 import copy
 import gc
+from src.models import BaselineTFT  # Add at top of file
 
 # Setup paths for imports
 def setup_paths():
@@ -761,135 +762,57 @@ class ExperimentRunner:
                 self.step_results['feature_data'] = pd.read_csv(MAIN_DATASET, index_col=0, parse_dates=True)
     
     def step_5_model_training(self):
-        """Step 5: Model training with standard results location"""
-        logger.info("🚀 STEP 5: MODEL TRAINING (STANDARD RESULTS)")
-        logger.info("=" * 60)
+        """Train baseline TFT model with technical indicators only"""
+        logger.info("🚀 STEP 5: MODEL TRAINING")
         step_start = time.time()
-        
+    
         try:
-            # Load feature data from standard location
-            if not os.path.exists(MAIN_DATASET):
-                raise ValueError(f"❌ No dataset found at {MAIN_DATASET}")
+            # Validate input data
+            if 'feature_data' not in self.step_results or self.step_results['feature_data'] is None:
+                raise ValueError("No feature data available. Run step 4 first.")
+                
+            data = self.step_results['feature_data']
             
-            logger.info(f"📊 Loading feature dataset from {MAIN_DATASET}")
-            feature_data = pd.read_csv(MAIN_DATASET, index_col=0, parse_dates=True)
-            
-            # Import model components
-            from src.models import ModelConfig, ModelTrainer
-            from src.models import TFTTemporalDecayModel, TFTStaticSentimentModel, LSTMBaseline
-            
-            # Create model configuration
-            model_config = ModelConfig(
-                hidden_size=self.config['model']['hidden_size'],
-                learning_rate=self.config['model']['learning_rate'],
-                batch_size=self.config['model']['batch_size'],
+            # Initialize baseline TFT (technical indicators only)
+            baseline_tft = BaselineTFT(
+                max_encoder_length=30,
+                max_prediction_length=5,
+                batch_size=128,
                 max_epochs=self.config['model']['max_epochs'],
-                max_encoder_length=self.config['model']['max_encoder_length'],
-                max_prediction_length=self.config['model']['max_prediction_length']
+                learning_rate=self.config['model']['learning_rate'],
+                hidden_size=64,
+                attention_head_size=4,
+                dropout=0.1,
+                target_horizons=[5, 30, 90]
             )
             
-            # Prepare data splits
-            train_data, val_data, test_data = self._create_data_splits(feature_data)
+            # Prepare and validate data
+            logger.info("📊 Preparing training data...")
+            train_dataset, val_dataset = baseline_tft.prepare_data(data)
             
-            logger.info(f"📊 Data splits:")
-            logger.info(f"   Train: {len(train_data)} samples")
-            logger.info(f"   Validation: {len(val_data)} samples") 
-            logger.info(f"   Test: {len(test_data)} samples")
-            
-            # Prepare features and targets
-            feature_columns, target_columns = self._prepare_model_features(feature_data)
-            
-            logger.info(f"📈 Model configuration:")
-            logger.info(f"   Features: {len(feature_columns)} columns")
-            logger.info(f"   Targets: {target_columns}")
-            
-            # Initialize trainer with standard results directory
-            trainer = ModelTrainer(model_config, save_dir=f"{RESULTS_DIR}/models")
-            
-            # Train models for each horizon
-            model_results = {}
-            
-            for horizon in self.config['temporal_decay']['horizons']:
-                horizon_target = f'target_{horizon}d'
-                if horizon_target not in target_columns:
-                    logger.warning(f"⚠️ Target {horizon_target} not found")
-                    continue
-                
-                logger.info(f"🎯 Training models for {horizon}-day horizon...")
-                
-                # Create data loaders
-                try:
-                    train_loader, val_loader, scaler = trainer.create_data_loaders(
-                        train_data, val_data, feature_columns, [horizon_target]
-                    )
-                except Exception as e:
-                    logger.error(f"❌ Data loader creation failed for {horizon}d: {e}")
-                    continue
-                
-                horizon_results = {}
-                
-                # Train each model variant
-                model_variants = [
-                    ('TFT-Temporal-Decay', lambda: TFTTemporalDecayModel(model_config, len(feature_columns))),
-                    ('TFT-Static-Sentiment', lambda: TFTStaticSentimentModel(model_config, len(feature_columns))),
-                    ('LSTM-Baseline', lambda: LSTMBaseline(model_config, len(feature_columns)))
-                ]
-                
-                for variant_name, model_creator in model_variants:
-                    logger.info(f"🤖 Training {variant_name} for {horizon}d horizon...")
-                    
-                    try:
-                        model = model_creator()
-                        model_name = f"{variant_name}_{horizon}d"
-                        
-                        training_results = trainer.train_model(
-                            model, train_loader, val_loader, model_name
-                        )
-                        
-                        horizon_results[variant_name] = training_results
-                        logger.info(f"✅ {variant_name}: Val Loss = {training_results['final_val_loss']:.6f}")
-                        
-                    except Exception as e:
-                        logger.error(f"❌ {variant_name} training failed: {e}")
-                        horizon_results[variant_name] = {
-                            'error': str(e), 
-                            'final_val_loss': float('inf')
-                        }
-                
-                model_results[f'{horizon}d'] = horizon_results
+            # Train model
+            logger.info("🚀 Training Baseline TFT...")
+            results = baseline_tft.train()
             
             # Store results
-            self.results.model_results = model_results
-            
-            # Save training results to standard location
-            results_path = f"{RESULTS_DIR}/model_training_results.json"
-            with open(results_path, 'w') as f:
-                json.dump(self._make_json_serializable(model_results), f, indent=2)
-            
-            logger.info(f"💾 Training results saved to {results_path}")
-            
-            # Store data for evaluation
-            self.step_results.update({
-                'train_data': train_data,
-                'val_data': val_data,
-                'test_data': test_data,
-                'feature_columns': feature_columns,
-                'target_columns': target_columns
-            })
+            self.models = {'baseline_tft': baseline_tft}
+            self.training_results = {'baseline_tft': results}
             
             step_time = time.time() - step_start
             self.step_times[5] = step_time
             
-            logger.info("✅ STEP 5 COMPLETED (STANDARD RESULTS)")
-            logger.info(f"   🤖 Models trained: {sum(len(hr) for hr in model_results.values())}")
-            logger.info(f"   📁 Results saved to: {RESULTS_DIR}")
-            logger.info(f"   🎯 Horizons: {list(model_results.keys())}")
-            logger.info(f"   ⏱️ Execution time: {step_time:.2f}s")
+            logger.info("✅ STEP 5 COMPLETED")
+            logger.info(f"   🤖 Model: Baseline TFT")
+            logger.info(f"   📈 Final validation loss: {results['final_val_loss']:.4f}")
+            logger.info(f"   ⏱️ Training time: {results['training_time']:.1f}s")
+            
+            return results
             
         except Exception as e:
             logger.error(f"❌ STEP 5 FAILED: {e}")
             if self.exp_config.debug_mode:
                 traceback.print_exc()
+            raise
     
     def step_6_evaluation(self):
         """Step 6: Model evaluation with standard results location"""
@@ -1103,8 +1026,6 @@ class ExperimentRunner:
             logger.error(f"💥 EXPERIMENT FAILED: {e}")
             if self.exp_config.debug_mode:
                 traceback.print_exc()
-        
-        return self.results
     
     # Helper Methods (similar to original but simplified for standard paths)
     def _prepare_news_for_finbert(self, data: pd.DataFrame) -> Dict[str, List]:
@@ -1465,7 +1386,9 @@ class ExperimentRunner:
         if isinstance(obj, dict):
             return {k: self._make_json_serializable(v) for k, v in obj.items()}
         elif isinstance(obj, list):
-            return [self._make_json_serializable(v) for v in obj]
+            return [self._make_json_serializable(x) for x in list(obj)]
+        elif isinstance(obj, datetime):
+            return obj.isoformat()
         elif isinstance(obj, np.ndarray):
             return obj.tolist()
         elif isinstance(obj, (np.integer, np.floating)):
@@ -1504,16 +1427,11 @@ Standard Structure:
         """
     )
     
-    parser.add_argument('--config', type=str, default='config.yaml',
-                       help='Configuration file path (default: config.yaml)')
-    parser.add_argument('--test', action='store_true',
-                       help='Run in test mode (2 stocks, reduced timeframe)')
-    parser.add_argument('--debug', action='store_true',
-                       help='Enable debug mode with detailed logging')
-    parser.add_argument('--quick', action='store_true',
-                       help='Quick mode with reduced training epochs')
-    parser.add_argument('--steps', type=str, default='1,2,3,4,5,6,7,8',
-                       help='Comma-separated list of steps to run (1-8)')
+    parser.add_argument('--config', type=str, default='config.yaml', help='Configuration file path (default: config.yaml)')
+    parser.add_argument('--test', action='store_true', help='Run in test mode (2 stocks, reduced timeframe)')
+    parser.add_argument('--debug', action='store_true', help='Enable debug mode with detailed logging')
+    parser.add_argument('--quick', action='store_true', help='Quick mode with reduced training epochs')
+    parser.add_argument('--steps', type=str, default='1,2,3,4,5,6,7,8', help='Comma-separated list of steps to run (1-8)')
     
     args = parser.parse_args()
     
@@ -1540,54 +1458,20 @@ Standard Structure:
         print("\n" + "=" * 80)
         print("🎉 EXPERIMENT EXECUTION SUMMARY (STANDARD STRUCTURE)")
         print("=" * 80)
-        print(f"✅ Success: {results.success}")
-        print(f"⏱️ Total time: {results.execution_time:.2f} seconds")
-        print(f"📊 Main dataset: {MAIN_DATASET}")
-        print(f"📁 Results directory: {RESULTS_DIR}")
         
-        if results.success:
-            print("\n📊 Standard Structure Created:")
-            if os.path.exists(MAIN_DATASET):
-                print(f"   📄 Dataset: {MAIN_DATASET} ({os.path.getsize(MAIN_DATASET) // 1024} KB)")
-            
-            for subdir in ["models", "reports", "plots"]:
-                subdir_path = Path(RESULTS_DIR) / subdir
-                if subdir_path.exists():
-                    file_count = len(list(subdir_path.glob('*')))
-                    print(f"   📁 {subdir}/: {file_count} files")
-            
-            backup_count = len(list(Path(BACKUP_DIR).glob('*'))) if os.path.exists(BACKUP_DIR) else 0
-            print(f"   💾 Backups: {backup_count} files")
-            
-            print("\n🎯 Benefits Achieved:")
-            print("   ✅ No more timestamped experiment confusion")
-            print("   ✅ Steps can find each other's data reliably")
-            print("   ✅ Automatic backup before each modification")
-            print("   ✅ Standard MLOps directory structure")
-            print("   ✅ Easy debugging and maintenance")
-            
-            print("\n🎯 Next Steps:")
-            print("   1. Review results in results/latest/")
-            print("   2. Check main dataset at data/processed/combined_dataset.csv")
-            print("   3. Verify all steps work independently")
-            
-            if exp_config.test_mode:
-                print("\n💡 Test Mode Completed Successfully!")
-                print("   Run without --test flag for full experiment")
+        if results:  # Add null check
+            print(f"✅ Success: {results.success}")
+            print(f"⏱️ Total time: {results.execution_time:.2f} seconds")
+            print(f"📊 Main dataset: {results.data_location}")
+            print(f"📁 Results directory: {results.results_location}")
         else:
-            print(f"\n❌ Error: {results.error_message}")
-            print("   Check the log files for detailed error information")
-            print(f"   Data may be partially available at: {MAIN_DATASET}")
-        
-        print("=" * 80)
-        
-    except KeyboardInterrupt:
-        print("\n\n⏹️ Experiment interrupted by user")
-        sys.exit(1)
+            print("❌ Experiment failed to generate results")
+            
     except Exception as e:
-        print(f"\n\n💥 Experiment failed with error: {e}")
-        if args.debug:
+        print(f"\n💥 Experiment failed with error: {str(e)}")
+        if "--debug" in sys.argv:
             traceback.print_exc()
+            
         print("\n💡 Troubleshooting tips:")
         print("   1. Check that config.yaml exists and is properly formatted")
         print("   2. Try running with --test flag for reduced scope")
