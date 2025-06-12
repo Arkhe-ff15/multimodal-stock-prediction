@@ -16,7 +16,7 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 from pathlib import Path
-from typing import List, Dict, Optional, Union, Tuple
+from typing import List, Dict, Optional, Union, Tuple, Any
 import logging
 from datetime import datetime, timedelta
 import warnings
