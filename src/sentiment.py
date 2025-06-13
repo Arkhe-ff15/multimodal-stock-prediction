@@ -88,7 +88,7 @@ def run_efficient_fnspid_processing(config_type: str = "moderate") -> bool:
     
     try:
         # Import the efficient processor
-        from efficient_fnspid_processor import EfficientFNSPIDProcessor, EfficientConfig
+        from src.fnspid_processor import EfficientFNSPIDProcessor, EfficientConfig
         
         # Configure based on type
         if config_type == "quick":
