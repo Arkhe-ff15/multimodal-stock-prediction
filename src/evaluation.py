@@ -734,6 +734,70 @@ class ModelEvaluator:
         
         return report
 
+def integrate_with_models(model_trainer, evaluation_results_dir="results/evaluation"):
+    """
+    Integration function to use evaluation.py with optimized models.py
+    
+    Args:
+        model_trainer: Trained ModelTrainer instance from models.py
+        evaluation_results_dir: Directory to save evaluation results
+    """
+    evaluator = ModelEvaluator(save_dir=evaluation_results_dir)
+    
+    # Extract predictions and actuals from model trainer
+    model_results = {}
+    
+    for model_name, model_info in model_trainer.models.items():
+        try:
+            # Get predictions based on model type
+            if model_name == 'LSTM_Baseline':
+                predictions = model_trainer._evaluate_lstm(model_info)
+            else:
+                predictions = model_info.predict(model_trainer.test_data)
+            
+            # Get actuals
+            actuals = {5: model_trainer.test_data['target_5'].dropna().values}
+            
+            # Calculate metrics using evaluation.py
+            metrics = evaluator.calculate_metrics(
+                y_true=actuals[5],
+                y_pred=predictions[5] if 5 in predictions else [],
+                returns_true=None,  # Can add returns calculation if needed
+                returns_pred=None
+            )
+            
+            model_results[model_name] = {5: metrics}
+            
+        except Exception as e:
+            logger.error(f"❌ Evaluation failed for {model_name}: {e}")
+    
+    # Compare models using evaluation.py framework
+    comparison_results = evaluator.compare_models(model_results)
+    
+    # Detect overfitting using train/val/test results
+    train_metrics = {name: model_trainer.results[name] for name in model_results.keys()}
+    val_metrics = model_results  # Validation metrics
+    test_metrics = model_results  # Test metrics (same in this case)
+    
+    overfitting_analysis = evaluator.detect_overfitting(
+        train_metrics, val_metrics, test_metrics
+    )
+    
+    # Generate comprehensive report
+    report = evaluator.create_evaluation_report(
+        model_results,
+        comparison_results, 
+        overfitting_analysis,
+        save_path=f"{evaluation_results_dir}/comprehensive_evaluation_report.txt"
+    )
+    
+    return {
+        'model_results': model_results,
+        'comparison_results': comparison_results,
+        'overfitting_analysis': overfitting_analysis,
+        'report': report
+    }
+
 # Example usage and testing
 if __name__ == "__main__":
     # Initialize evaluator
