@@ -2411,6 +2411,73 @@ def get_available_models_and_datasets() -> Dict[str, str]:
     
     return models_datasets
 
+def calculate_proper_vwap(data: pd.DataFrame) -> pd.Series:
+    """
+    FIXED VWAP calculation with proper daily reset.
+    
+    CRITICAL FIX: VWAP should reset each trading day, not be cumulative across entire history.
+    This is the standard financial industry calculation.
+    
+    Formula: VWAP = Σ(Typical_Price × Volume) / Σ(Volume) for each trading day
+    Where Typical_Price = (High + Low + Close) / 3
+    
+    Args:
+        data: DataFrame with columns ['high', 'low', 'close', 'volume', 'date', 'symbol']
+        
+    Returns:
+        pd.Series: VWAP values with proper daily reset
+    """
+    logger.info("🔧 Calculating VWAP with FIXED daily reset...")
+    
+    vwap_results = []
+    
+    # Process each symbol separately
+    for symbol in data['symbol'].unique():
+        symbol_data = data[data['symbol'] == symbol].copy()
+        
+        if len(symbol_data) == 0:
+            continue
+        
+        # Ensure date column is datetime
+        symbol_data['date'] = pd.to_datetime(symbol_data['date'])
+        
+        # Create date-only column for daily grouping
+        symbol_data['date_only'] = symbol_data['date'].dt.date
+        
+        # Sort by date to ensure proper order
+        symbol_data = symbol_data.sort_values('date')
+        
+        symbol_vwap_values = []
+        
+        # Calculate VWAP for each trading day (THIS IS THE KEY FIX)
+        for trade_date, daily_group in symbol_data.groupby('date_only'):
+            daily_group = daily_group.sort_values('date')  # Ensure intraday order
+            
+            # Calculate typical price for the day
+            typical_price = (daily_group['high'] + daily_group['low'] + daily_group['close']) / 3
+            
+            # Calculate volume-weighted price
+            volume_price = typical_price * daily_group['volume']
+            
+            # FIXED: Intraday cumulative VWAP (resets daily)
+            cumulative_volume_price = volume_price.cumsum()
+            cumulative_volume = daily_group['volume'].cumsum()
+            
+            # Calculate VWAP with safe division
+            daily_vwap = cumulative_volume_price / cumulative_volume.replace(0, np.nan)
+            
+            # Handle edge cases (no volume or NaN)
+            daily_vwap = daily_vwap.fillna(typical_price)  # Fallback to typical price
+            
+            symbol_vwap_values.extend(daily_vwap.values)
+        
+        vwap_results.extend(symbol_vwap_values)
+    
+    # Create result series with proper index alignment
+    result_series = pd.Series(vwap_results, index=data.index, dtype=float)
+    
+    logger.info("✅ VWAP calculation completed with daily reset")
+    return result_series
 # =============================================================================
 # MAIN EXECUTION AND TESTING - With Timezone Fixes
 # =============================================================================
