@@ -1,18 +1,15 @@
+#!/usr/bin/env python3
 """
-UPDATED SENTIMENT.PY - Integrated with FNSPID Processor
-=======================================================
+COMPLETE SENTIMENT.PY - Final Pipeline Integration
+=================================================
 
-✅ INTEGRATED APPROACH:
-1. Detects if FNSPID data exists and is large (>1GB)
-2. Routes to efficient processor for large datasets
-3. Falls back to original approach for smaller datasets
-4. Provides unified interface for sentiment enhancement
-5. Seamless integration with existing pipeline
+✅ INTEGRATION FOR YOUR PIPELINE:
+1. Auto-detects temporal decay processed data
+2. Integrates with core dataset seamlessly
+3. Creates final enhanced dataset for TFT training
+4. Validates integration quality
 
-USAGE:
-    python src/sentiment.py                    # Auto-detect and process
-    python src/sentiment.py --force-original   # Force original approach
-    python src/sentiment.py --fnspid-only      # Force FNSPID approach
+PIPELINE: data.py → fnspid_processor.py → temporal_decay.py → sentiment.py → models.py
 """
 
 import pandas as pd
@@ -23,369 +20,431 @@ import argparse
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple, Any
+import json
+import shutil
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Add src to path
-current_dir = Path(__file__).parent.absolute()
-if str(current_dir) not in sys.path:
-    sys.path.insert(0, str(current_dir))
-
-# Standard paths
+# Paths
 DATA_DIR = "data/processed"
-RAW_DIR = "data/raw"
-FNSPID_FILE = f"{RAW_DIR}/nasdaq_external_data.csv"
+BACKUP_DIR = "data/backups"
+RESULTS_DIR = "results/sentiment_integration"
+
 CORE_DATASET = f"{DATA_DIR}/combined_dataset.csv"
+TEMPORAL_DECAY_DATA = f"{DATA_DIR}/sentiment_with_temporal_decay.csv"
+FNSPID_DAILY_SENTIMENT = f"{DATA_DIR}/fnspid_daily_sentiment.csv"
+ENHANCED_DATASET = f"{DATA_DIR}/combined_dataset_with_sentiment.csv"
+INTEGRATION_REPORT = f"{RESULTS_DIR}/integration_report.json"
 
-def check_fnspid_availability() -> Dict[str, any]:
-    """Check if FNSPID dataset is available and get info"""
-    info = {
-        'exists': False,
-        'size_gb': 0,
-        'is_large': False,
-        'should_use_efficient': False
-    }
+class DatasetAnalyzer:
+    """Analyze available datasets"""
     
-    if os.path.exists(FNSPID_FILE):
-        info['exists'] = True
-        size_bytes = os.path.getsize(FNSPID_FILE)
-        info['size_gb'] = size_bytes / (1024**3)
-        info['is_large'] = info['size_gb'] > 1.0  # Consider >1GB as large
-        info['should_use_efficient'] = info['size_gb'] > 5.0  # Use efficient processor for >5GB
-    
-    return info
-
-def check_core_dataset_availability() -> Dict[str, any]:
-    """Check if core dataset is available"""
-    info = {
-        'exists': False,
-        'shape': None,
-        'symbols': None,
-        'date_range': None
-    }
-    
-    if os.path.exists(CORE_DATASET):
-        try:
-            # Read just the header and sample
-            df_sample = pd.read_csv(CORE_DATASET, nrows=100)
-            info['exists'] = True
-            info['shape'] = (len(pd.read_csv(CORE_DATASET, usecols=[0])), len(df_sample.columns))
-            info['symbols'] = df_sample['symbol'].unique().tolist() if 'symbol' in df_sample.columns else []
-            
-            if 'date' in df_sample.columns:
-                info['date_range'] = (df_sample['date'].min(), df_sample['date'].max())
-        except Exception as e:
-            logger.warning(f"Could not analyze core dataset: {e}")
-    
-    return info
-
-def run_efficient_fnspid_processing(config_type: str = "moderate") -> bool:
-    """Run the efficient FNSPID processor"""
-    logger.info(f"🚀 Launching efficient FNSPID processor ({config_type} analysis)...")
-    
-    try:
-        # Import the efficient processor
-        from src.fnspid_processor import EfficientFNSPIDProcessor, EfficientConfig
-        
-        # Configure based on type
-        if config_type == "quick":
-            config = EfficientConfig(
-                target_symbols=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA'],
-                sample_ratio=0.1,
-                max_articles_per_symbol=1000,
-                chunk_size=5000,
-                batch_size=8
-            )
-        elif config_type == "moderate":
-            config = EfficientConfig(
-                target_symbols=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'JPM'],
-                sample_ratio=0.2,
-                max_articles_per_symbol=1500,
-                chunk_size=10000,
-                batch_size=16
-            )
-        else:  # comprehensive
-            config = EfficientConfig(
-                target_symbols=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'JPM'],
-                sample_ratio=0.5,
-                max_articles_per_symbol=3000,
-                chunk_size=20000,
-                batch_size=32
-            )
-        
-        # Run processor
-        processor = EfficientFNSPIDProcessor(config)
-        article_sentiments, aggregated_features = processor.run_efficient_analysis()
-        
-        return not aggregated_features.empty
-        
-    except ImportError:
-        logger.error("❌ Could not import efficient_fnspid_processor")
-        logger.info("💡 Make sure efficient_fnspid_processor.py is in the same directory")
-        return False
-    except Exception as e:
-        logger.error(f"❌ Efficient processing failed: {e}")
-        return False
-
-def run_original_sentiment_processing() -> bool:
-    """Run the original sentiment processing approach"""
-    logger.info("🔄 Running original sentiment processing...")
-    
-    try:
-        # This would be your original sentiment.py logic
-        # For now, let's create a simple fallback
-        
-        # Check if we can load core dataset
-        core_info = check_core_dataset_availability()
-        if not core_info['exists']:
-            logger.error("❌ Core dataset not found for original processing")
-            return False
-        
-        logger.info("⚠️ Original processing not fully implemented in this integrated version")
-        logger.info("💡 Consider using the efficient processor or implement fallback logic")
-        
-        return False
-        
-    except Exception as e:
-        logger.error(f"❌ Original processing failed: {e}")
-        return False
-
-def integrate_sentiment_with_core_dataset() -> bool:
-    """Integrate sentiment results with core dataset"""
-    logger.info("🔗 Integrating sentiment features with core dataset...")
-    
-    # Check if sentiment results exist
-    sentiment_file = f"{DATA_DIR}/fnspid_sentiment_dataset.csv"
-    if not os.path.exists(sentiment_file):
-        logger.error(f"❌ Sentiment results not found: {sentiment_file}")
-        return False
-    
-    # Check if core dataset exists
-    if not os.path.exists(CORE_DATASET):
-        logger.error(f"❌ Core dataset not found: {CORE_DATASET}")
-        return False
-    
-    try:
-        # Load datasets
-        logger.info("📥 Loading datasets for integration...")
-        core_data = pd.read_csv(CORE_DATASET)
-        sentiment_data = pd.read_csv(sentiment_file)
-        
-        logger.info(f"   📊 Core dataset: {core_data.shape}")
-        logger.info(f"   📊 Sentiment data: {sentiment_data.shape}")
-        
-        # Prepare for merge
-        core_data['date'] = pd.to_datetime(core_data['date']).dt.date
-        sentiment_data['date'] = pd.to_datetime(sentiment_data['date']).dt.date
-        
-        # Merge
-        enhanced_data = core_data.merge(
-            sentiment_data,
-            on=['symbol', 'date'],
-            how='left'
-        )
-        
-        # Fill missing values
-        sentiment_columns = [col for col in sentiment_data.columns if col not in ['symbol', 'date']]
-        fill_values = {
-            'sentiment_compound': 0.0,
-            'sentiment_volatility': 0.0,
-            'sentiment_positive': 0.33,
-            'sentiment_negative': 0.33,
-            'sentiment_neutral': 0.34,
-            'sentiment_confidence': 0.34,
-            'article_count': 0
+    @staticmethod
+    def analyze_data_availability() -> Dict[str, Any]:
+        """Analyze what data is available for integration"""
+        analysis = {
+            'core_dataset': {'exists': False},
+            'temporal_decay_data': {'exists': False, 'decay_features': []},
+            'fnspid_daily_sentiment': {'exists': False},
+            'recommended_strategy': 'none'
         }
         
-        for col in sentiment_columns:
-            if col in enhanced_data.columns:
-                enhanced_data[col] = enhanced_data[col].fillna(fill_values.get(col, 0.0))
+        # Check core dataset
+        if os.path.exists(CORE_DATASET):
+            try:
+                sample = pd.read_csv(CORE_DATASET, nrows=100)
+                analysis['core_dataset'] = {
+                    'exists': True,
+                    'symbols': sample['symbol'].unique().tolist() if 'symbol' in sample.columns else []
+                }
+            except Exception as e:
+                logger.warning(f"Could not analyze core dataset: {e}")
         
-        # Save enhanced dataset
-        enhanced_data['date'] = enhanced_data['date'].astype(str)
-        enhanced_path = f"{DATA_DIR}/combined_dataset_with_sentiment.csv"
-        enhanced_data.to_csv(enhanced_path, index=False)
+        # Check temporal decay data (highest priority)
+        if os.path.exists(TEMPORAL_DECAY_DATA):
+            try:
+                sample = pd.read_csv(TEMPORAL_DECAY_DATA, nrows=100)
+                decay_features = [col for col in sample.columns if 'sentiment_decay_' in col]
+                analysis['temporal_decay_data'] = {
+                    'exists': True,
+                    'decay_features': decay_features,
+                    'symbols': sample['symbol'].unique().tolist() if 'symbol' in sample.columns else []
+                }
+                if len(decay_features) >= 3:
+                    analysis['recommended_strategy'] = 'use_temporal_decay'
+            except Exception as e:
+                logger.warning(f"Could not analyze temporal decay data: {e}")
         
-        # Create backup
-        backup_path = f"{CORE_DATASET}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        core_data['date'] = core_data['date'].astype(str)
-        core_data.to_csv(backup_path, index=False)
+        # Check FNSPID sentiment (fallback)
+        elif os.path.exists(FNSPID_DAILY_SENTIMENT):
+            try:
+                sample = pd.read_csv(FNSPID_DAILY_SENTIMENT, nrows=100)
+                analysis['fnspid_daily_sentiment'] = {'exists': True}
+                analysis['recommended_strategy'] = 'use_fnspid_sentiment'
+            except Exception as e:
+                logger.warning(f"Could not analyze FNSPID data: {e}")
         
-        logger.info("✅ Integration completed successfully!")
-        logger.info(f"   📊 Enhanced shape: {enhanced_data.shape}")
-        logger.info(f"   📊 Added features: {enhanced_data.shape[1] - core_data.shape[1]}")
-        logger.info(f"   💾 Backup: {backup_path}")
-        logger.info(f"   📁 Enhanced dataset: {enhanced_path}")
-        logger.info(f"   🎯 Sentiment coverage: {(enhanced_data['article_count'] > 0).mean():.1%}")
+        if analysis['recommended_strategy'] == 'none':
+            analysis['recommended_strategy'] = 'synthetic'
         
-        return True
+        return analysis
+
+class SyntheticSentimentGenerator:
+    """Generate synthetic sentiment when no data available"""
+    
+    @staticmethod
+    def generate_synthetic_sentiment(core_data: pd.DataFrame) -> pd.DataFrame:
+        """Generate synthetic sentiment with decay features"""
+        logger.info("🎲 Generating synthetic sentiment...")
         
-    except Exception as e:
-        logger.error(f"❌ Integration failed: {e}")
-        return False
+        try:
+            synthetic_data = core_data[['symbol', 'date']].drop_duplicates().copy()
+            np.random.seed(42)
+            
+            records = []
+            for _, row in synthetic_data.iterrows():
+                symbol, date = row['symbol'], row['date']
+                
+                # Generate base sentiment
+                symbol_bias = (hash(symbol) % 1000 - 500) / 10000
+                date_cycle = np.sin(2 * np.pi * pd.to_datetime(date).timetuple().tm_yday / 365) * 0.1
+                base_sentiment = np.clip(np.random.normal(symbol_bias + date_cycle, 0.3), -1, 1)
+                
+                # Generate decay features
+                sentiment_5d = np.clip(base_sentiment + np.random.normal(0, 0.2), -1, 1)
+                sentiment_30d = np.clip(base_sentiment * 0.8 + np.random.normal(0, 0.15), -1, 1)
+                sentiment_90d = np.clip(base_sentiment * 0.6 + np.random.normal(0, 0.1), -1, 1)
+                
+                confidence = np.random.beta(3, 2)
+                article_count = max(1, int(np.random.poisson(3)))
+                
+                records.append({
+                    'symbol': symbol, 'date': date,
+                    'sentiment_decay_5d': sentiment_5d,
+                    'sentiment_decay_30d': sentiment_30d,
+                    'sentiment_decay_90d': sentiment_90d,
+                    'sentiment_confidence': confidence,
+                    'article_count': article_count,
+                    'source': 'synthetic'
+                })
+            
+            result = pd.DataFrame(records)
+            logger.info(f"✅ Generated {len(result):,} synthetic sentiment records")
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Synthetic generation failed: {e}")
+            return pd.DataFrame()
+
+class SentimentIntegrator:
+    """Handle integration of sentiment with core dataset"""
+    
+    def __init__(self):
+        self.stats = {
+            'core_records': 0, 'sentiment_records': 0, 'matched_records': 0,
+            'coverage_percentage': 0.0, 'features_added': 0
+        }
+        os.makedirs(RESULTS_DIR, exist_ok=True)
+    
+    def integrate_sentiment_with_core(self, sentiment_data: pd.DataFrame, strategy: str) -> pd.DataFrame:
+        """Integrate sentiment data with core dataset"""
+        logger.info(f"🔗 Integrating sentiment data (strategy: {strategy})...")
+        
+        try:
+            # Load core dataset
+            if not os.path.exists(CORE_DATASET):
+                raise FileNotFoundError(f"Core dataset not found: {CORE_DATASET}")
+            
+            core_data = pd.read_csv(CORE_DATASET)
+            self.stats['core_records'] = len(core_data)
+            self.stats['sentiment_records'] = len(sentiment_data)
+            
+            # Create backup
+            backup_path = self._create_backup()
+            
+            # Standardize dates
+            core_data['date'] = pd.to_datetime(core_data['date']).dt.date
+            sentiment_data['date'] = pd.to_datetime(sentiment_data['date']).dt.date
+            
+            # Merge datasets
+            enhanced_data = core_data.merge(sentiment_data, on=['symbol', 'date'], how='left')
+            
+            # Calculate stats
+            sentiment_cols = [col for col in sentiment_data.columns if col not in ['symbol', 'date']]
+            if sentiment_cols:
+                matched_mask = enhanced_data[sentiment_cols[0]].notna()
+                self.stats['matched_records'] = matched_mask.sum()
+                self.stats['coverage_percentage'] = (self.stats['matched_records'] / self.stats['core_records']) * 100
+            
+            self.stats['features_added'] = len(enhanced_data.columns) - len(core_data.columns)
+            
+            # Fill missing values
+            defaults = {
+                'sentiment_decay_5d': 0.0, 'sentiment_decay_30d': 0.0, 'sentiment_decay_90d': 0.0,
+                'sentiment_confidence': 0.5, 'article_count': 0, 'source': 'none'
+            }
+            
+            for col in sentiment_cols:
+                if col in enhanced_data.columns:
+                    enhanced_data[col] = enhanced_data[col].fillna(defaults.get(col, 0.0))
+            
+            # Convert dates back and save
+            enhanced_data['date'] = enhanced_data['date'].astype(str)
+            enhanced_data.to_csv(ENHANCED_DATASET, index=False)
+            
+            logger.info("✅ Integration completed!")
+            logger.info(f"   📊 Core: {self.stats['core_records']:,}, Sentiment: {self.stats['sentiment_records']:,}")
+            logger.info(f"   📈 Coverage: {self.stats['coverage_percentage']:.1f}%, Features added: {self.stats['features_added']}")
+            logger.info(f"   💾 Backup: {backup_path}")
+            
+            return enhanced_data
+            
+        except Exception as e:
+            logger.error(f"❌ Integration failed: {e}")
+            raise
+    
+    def _create_backup(self) -> str:
+        """Create backup of core dataset"""
+        try:
+            os.makedirs(BACKUP_DIR, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = f"{BACKUP_DIR}/combined_dataset_backup_{timestamp}.csv"
+            shutil.copy2(CORE_DATASET, backup_path)
+            return backup_path
+        except Exception as e:
+            logger.warning(f"⚠️ Backup failed: {e}")
+            return "backup_failed"
+    
+    def validate_integration(self, enhanced_data: pd.DataFrame) -> Dict[str, Any]:
+        """Validate integration results"""
+        logger.info("🔍 Validating integration...")
+        
+        validation = {
+            'status': 'success', 'issues': [], 'recommendations': [],
+            'readiness_for_tft': True, 'quality_metrics': {}, 'feature_analysis': {}
+        }
+        
+        try:
+            # Check required columns
+            required_base = ['stock_id', 'symbol', 'date', 'close', 'target_5']
+            required_sentiment = ['sentiment_decay_5d', 'sentiment_decay_30d', 'sentiment_decay_90d']
+            
+            missing_base = [col for col in required_base if col not in enhanced_data.columns]
+            missing_sentiment = [col for col in required_sentiment if col not in enhanced_data.columns]
+            
+            if missing_base:
+                validation['issues'].append(f"Missing base columns: {missing_base}")
+                validation['readiness_for_tft'] = False
+            
+            if missing_sentiment:
+                validation['issues'].append(f"Missing sentiment columns: {missing_sentiment}")
+                validation['readiness_for_tft'] = False
+            
+            # Quality metrics
+            total_records = len(enhanced_data)
+            sentiment_coverage = {}
+            for col in required_sentiment:
+                if col in enhanced_data.columns:
+                    non_zero = (enhanced_data[col] != 0).sum()
+                    sentiment_coverage[col] = (non_zero / total_records) * 100
+            
+            validation['quality_metrics'] = {
+                'total_records': total_records,
+                'sentiment_coverage': sentiment_coverage,
+                'unique_symbols': enhanced_data['symbol'].nunique(),
+                'target_coverage': enhanced_data['target_5'].notna().mean() * 100
+            }
+            
+            # Feature analysis
+            validation['feature_analysis'] = {
+                'total_features': len(enhanced_data.columns),
+                'technical_features': len([c for c in enhanced_data.columns if any(p in c.lower() for p in ['ema_', 'sma_', 'rsi_', 'macd'])]),
+                'sentiment_features': len([c for c in enhanced_data.columns if 'sentiment' in c.lower()]),
+                'time_features': len([c for c in enhanced_data.columns if any(p in c.lower() for p in ['year', 'month', 'day'])]),
+                'target_features': len([c for c in enhanced_data.columns if c.startswith('target_')])
+            }
+            
+            # Recommendations
+            avg_coverage = np.mean(list(sentiment_coverage.values())) if sentiment_coverage else 0
+            if avg_coverage < 20:
+                validation['recommendations'].append("Low sentiment coverage")
+                validation['status'] = 'warning'
+            elif avg_coverage < 50:
+                validation['recommendations'].append("Moderate sentiment coverage")
+            else:
+                validation['recommendations'].append("Good sentiment coverage - ready for TFT")
+            
+            if validation['issues']:
+                validation['status'] = 'issues_found' if validation['readiness_for_tft'] else 'not_ready'
+            
+        except Exception as e:
+            validation['status'] = 'validation_failed'
+            validation['issues'].append(f"Validation error: {e}")
+            validation['readiness_for_tft'] = False
+        
+        return validation
+
+class SentimentProcessor:
+    """Main orchestrator for sentiment integration"""
+    
+    def __init__(self):
+        self.start_time = datetime.now()
+    
+    def run_complete_integration(self) -> Tuple[bool, Dict[str, Any]]:
+        """Run complete sentiment integration pipeline"""
+        logger.info("🚀 STARTING SENTIMENT INTEGRATION PIPELINE")
+        logger.info("=" * 50)
+        
+        try:
+            # Step 1: Analyze data availability
+            analysis = DatasetAnalyzer.analyze_data_availability()
+            
+            logger.info("📊 DATA AVAILABILITY:")
+            logger.info(f"   📄 Core dataset: {'✅' if analysis['core_dataset']['exists'] else '❌'}")
+            logger.info(f"   🔬 Temporal decay: {'✅' if analysis['temporal_decay_data']['exists'] else '❌'}")
+            logger.info(f"   📊 FNSPID sentiment: {'✅' if analysis['fnspid_daily_sentiment']['exists'] else '❌'}")
+            logger.info(f"   💡 Strategy: {analysis['recommended_strategy']}")
+            
+            # Step 2: Load sentiment data
+            strategy = analysis['recommended_strategy']
+            
+            if strategy == 'use_temporal_decay':
+                logger.info("🔬 Using temporal decay data...")
+                sentiment_data = pd.read_csv(TEMPORAL_DECAY_DATA)
+                
+            elif strategy == 'use_fnspid_sentiment':
+                logger.info("📊 Using FNSPID sentiment...")
+                sentiment_data = pd.read_csv(FNSPID_DAILY_SENTIMENT)
+                # Add decay features
+                sentiment_data['sentiment_decay_5d'] = sentiment_data.get('sentiment_compound', 0)
+                sentiment_data['sentiment_decay_30d'] = sentiment_data.get('sentiment_compound', 0) * 0.8
+                sentiment_data['sentiment_decay_90d'] = sentiment_data.get('sentiment_compound', 0) * 0.6
+                
+            elif strategy == 'synthetic':
+                logger.info("🎲 Generating synthetic sentiment...")
+                core_data = pd.read_csv(CORE_DATASET)
+                sentiment_data = SyntheticSentimentGenerator.generate_synthetic_sentiment(core_data)
+                
+            else:
+                raise ValueError(f"Unknown strategy: {strategy}")
+            
+            if sentiment_data.empty:
+                raise ValueError("No sentiment data available")
+            
+            # Step 3: Integrate
+            integrator = SentimentIntegrator()
+            enhanced_data = integrator.integrate_sentiment_with_core(sentiment_data, strategy)
+            
+            # Step 4: Validate
+            validation = integrator.validate_integration(enhanced_data)
+            
+            # Step 5: Generate report
+            report = {
+                'timestamp': datetime.now().isoformat(),
+                'strategy': strategy,
+                'stats': integrator.stats,
+                'validation': validation
+            }
+            
+            with open(INTEGRATION_REPORT, 'w') as f:
+                json.dump(report, f, indent=2, default=str)
+            
+            return True, {
+                'strategy': strategy,
+                'enhanced_dataset_path': ENHANCED_DATASET,
+                'records': len(enhanced_data),
+                'coverage': integrator.stats['coverage_percentage'],
+                'features_added': integrator.stats['features_added'],
+                'validation': validation,
+                'report_path': INTEGRATION_REPORT
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Integration failed: {e}")
+            return False, {'error': str(e)}
 
 def main():
-    """Main function with intelligent routing"""
-    
-    parser = argparse.ArgumentParser(
-        description='Intelligent Sentiment Analysis Pipeline',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-🤖 INTELLIGENT SENTIMENT PROCESSING
-
-This script automatically detects your data setup and chooses the best approach:
-
-📊 Large FNSPID Dataset (>5GB):     → Efficient chunked processing
-📊 Medium FNSPID Dataset (1-5GB):   → Standard FNSPID processing  
-📊 No FNSPID Dataset:               → Original approach (Yahoo + synthetic)
-
-Examples:
-  python src/sentiment.py                    # Auto-detect best approach
-  python src/sentiment.py --quick            # Quick FNSPID analysis
-  python src/sentiment.py --force-original   # Force original approach
-  python src/sentiment.py --integrate        # Just do integration step
-        """
-    )
-    
-    parser.add_argument('--force-original', action='store_true',
-                       help='Force original sentiment processing approach')
-    parser.add_argument('--fnspid-only', action='store_true',
-                       help='Force FNSPID processing even for small datasets')
-    parser.add_argument('--quick', action='store_true',
-                       help='Quick FNSPID analysis (10%% sample)')
-    parser.add_argument('--moderate', action='store_true',
-                       help='Moderate FNSPID analysis (20%% sample)')
-    parser.add_argument('--comprehensive', action='store_true',
-                       help='Comprehensive FNSPID analysis (50%% sample)')
-    parser.add_argument('--integrate', action='store_true',
-                       help='Only run integration step')
-    parser.add_argument('--no-integrate', action='store_true',
-                       help='Skip integration step')
-    
+    """Main execution"""
+    parser = argparse.ArgumentParser(description='Sentiment Integration Pipeline')
+    parser.add_argument('--validate', action='store_true', help='Validate existing dataset')
     args = parser.parse_args()
     
-    print("🤖 INTELLIGENT SENTIMENT ANALYSIS PIPELINE")
-    print("=" * 70)
+    print("🤖 SENTIMENT INTEGRATION PIPELINE")
+    print("=" * 50)
     
-    # Just do integration if requested
-    if args.integrate:
-        success = integrate_sentiment_with_core_dataset()
-        if success:
-            print("✅ Integration completed successfully!")
+    if args.validate:
+        if os.path.exists(ENHANCED_DATASET):
+            enhanced_data = pd.read_csv(ENHANCED_DATASET)
+            integrator = SentimentIntegrator()
+            validation = integrator.validate_integration(enhanced_data)
+            
+            print(f"\n🔍 VALIDATION RESULTS:")
+            print(f"   📊 Status: {validation['status'].upper()}")
+            print(f"   🎯 TFT Ready: {'✅' if validation['readiness_for_tft'] else '❌'}")
+            
+            if validation['issues']:
+                print("   ⚠️ Issues:")
+                for issue in validation['issues']:
+                    print(f"      • {issue}")
+            
+            if validation['recommendations']:
+                print("   💡 Recommendations:")
+                for rec in validation['recommendations']:
+                    print(f"      • {rec}")
         else:
-            print("❌ Integration failed!")
+            print(f"❌ No enhanced dataset found")
         return
     
-    # Analyze available data
-    fnspid_info = check_fnspid_availability()
-    core_info = check_core_dataset_availability()
-    
-    print("📊 DATA AVAILABILITY ANALYSIS:")
-    print(f"   📄 FNSPID Dataset: {'✅' if fnspid_info['exists'] else '❌'}")
-    if fnspid_info['exists']:
-        print(f"      📊 Size: {fnspid_info['size_gb']:.1f} GB")
-        print(f"      🔧 Large dataset: {'Yes' if fnspid_info['is_large'] else 'No'}")
-    
-    print(f"   📄 Core Dataset: {'✅' if core_info['exists'] else '❌'}")
-    if core_info['exists']:
-        print(f"      📊 Shape: {core_info['shape']}")
-        print(f"      🏢 Symbols: {len(core_info['symbols'])} ({', '.join(core_info['symbols'][:5])}{'...' if len(core_info['symbols']) > 5 else ''})")
-    
-    print()
-    
-    # Determine processing approach
-    if args.force_original:
-        print("🔄 FORCED: Using original sentiment processing approach")
-        approach = "original"
-        config_type = None
-        
-    elif args.fnspid_only or fnspid_info['exists']:
-        if not fnspid_info['exists']:
-            print("❌ FNSPID dataset not found but --fnspid-only specified")
-            return
-        
-        print("🚀 SELECTED: Using FNSPID processing approach")
-        approach = "fnspid"
-        
-        # Determine config type
-        if args.quick:
-            config_type = "quick"
-        elif args.moderate:
-            config_type = "moderate"  
-        elif args.comprehensive:
-            config_type = "comprehensive"
-        else:
-            # Auto-select based on dataset size
-            if fnspid_info['size_gb'] > 15:
-                config_type = "quick"  # Very large
-                print(f"   ⚡ Auto-selected: Quick analysis (dataset is {fnspid_info['size_gb']:.1f}GB)")
-            elif fnspid_info['size_gb'] > 8:
-                config_type = "moderate"  # Large
-                print(f"   🚀 Auto-selected: Moderate analysis (dataset is {fnspid_info['size_gb']:.1f}GB)")
-            else:
-                config_type = "comprehensive"  # Medium
-                print(f"   🔬 Auto-selected: Comprehensive analysis (dataset is {fnspid_info['size_gb']:.1f}GB)")
-    
-    else:
-        print("🔄 FALLBACK: Using original sentiment processing approach")
-        print("   💡 No FNSPID dataset found, using Yahoo Finance + synthetic data")
-        approach = "original"
-        config_type = None
-    
-    # Show processing plan
-    if approach == "fnspid":
-        configs = {
-            "quick": "10% sample, 5 symbols, ~10-20 min",
-            "moderate": "20% sample, 7 symbols, ~30-45 min", 
-            "comprehensive": "50% sample, all symbols, ~1-2 hours"
-        }
-        print(f"   📋 Configuration: {config_type.title()} ({configs[config_type]})")
-    
-    # Confirm execution
-    if not args.integrate:
-        confirm = input(f"\n🚀 Proceed with {approach} approach? (Y/n): ").strip().lower()
-        if confirm in ['n', 'no']:
-            print("❌ Processing cancelled")
-            return
-    
-    # Execute processing
-    success = False
-    
+    # Run integration
     try:
-        if approach == "fnspid":
-            success = run_efficient_fnspid_processing(config_type)
-        else:
-            success = run_original_sentiment_processing()
+        processor = SentimentProcessor()
+        success, summary = processor.run_complete_integration()
         
         if success:
-            print(f"\n✅ {approach.upper()} PROCESSING COMPLETED!")
+            print(f"\n🎉 INTEGRATION COMPLETED SUCCESSFULLY!")
+            print(f"📊 Records: {summary['records']:,}")
+            print(f"📈 Coverage: {summary['coverage']:.1f}%")
+            print(f"🆕 Features: {summary['features_added']}")
+            print(f"📁 Output: {summary['enhanced_dataset_path']}")
             
-            # Auto-integrate unless disabled
-            if not args.no_integrate:
-                print("\n🔗 Starting automatic integration...")
-                integration_success = integrate_sentiment_with_core_dataset()
+            validation = summary['validation']
+            print(f"\n🔍 Validation: {validation['status'].upper()}")
+            print(f"🎯 TFT Ready: {'✅' if validation['readiness_for_tft'] else '❌'}")
+            
+            if 'feature_analysis' in validation:
+                features = validation['feature_analysis']
+                print(f"\n📊 Features: {features['total_features']} total")
+                print(f"   🔧 Technical: {features['technical_features']}")
+                print(f"   🎭 Sentiment: {features['sentiment_features']}")
+                print(f"   🎯 Targets: {features['target_features']}")
+            
+            if 'sentiment_coverage' in validation.get('quality_metrics', {}):
+                coverage = validation['quality_metrics']['sentiment_coverage']
+                print(f"\n📈 Sentiment Coverage:")
+                for horizon, pct in coverage.items():
+                    print(f"   • {horizon}: {pct:.1f}%")
+            
+            print(f"\n🚀 NEXT STEPS:")
+            print("1. ✅ Pipeline complete - ready for TFT training")
+            print("2. 🤖 Run: python src/models.py")
+            print("3. 📊 Compare baseline vs enhanced TFT performance")
+            
+            # Sample preview
+            enhanced_data = pd.read_csv(summary['enhanced_dataset_path'])
+            sentiment_cols = [col for col in enhanced_data.columns if 'sentiment_decay_' in col]
+            if sentiment_cols:
+                print(f"\n📋 Sample Enhanced Dataset:")
+                sample_cols = ['symbol', 'date', 'close'] + sentiment_cols[:3]
+                print(enhanced_data[sample_cols].head())
                 
-                if integration_success:
-                    print("✅ Integration completed successfully!")
-                    print("\n🎯 NEXT STEPS:")
-                    print("1. ✅ Sentiment features added to dataset")
-                    print("2. ⏰ Apply temporal decay: python src/temporal_decay.py")
-                    print("3. 🤖 Train TFT models: python src/models.py")
-                    print("4. 📊 Compare model performance")
-                else:
-                    print("⚠️ Integration failed, but sentiment analysis completed")
-            else:
-                print("\n💡 Integration skipped. Run with --integrate to merge with core dataset")
-        
         else:
-            print(f"\n❌ {approach.upper()} PROCESSING FAILED!")
-            print("💡 Check the logs above for details")
+            print(f"\n❌ Integration failed: {summary.get('error', 'Unknown error')}")
     
     except Exception as e:
-        print(f"\n❌ Processing failed with error: {e}")
+        print(f"\n❌ Pipeline failed: {e}")
         import traceback
         traceback.print_exc()
 
