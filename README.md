@@ -7,7 +7,11 @@
 
 ## Abstract
 
-This repository implements a novel **Multi-Horizon Sentiment-Enhanced Temporal Fusion Transformer (TFT)** architecture for financial time series forecasting. Our primary contribution is the development of **horizon-specific temporal sentiment decay**, a mathematical framework that dynamically weights historical sentiment information based on forecasting horizon. The methodology integrates FinBERT-derived sentiment features with technical indicators through a sophisticated decay mechanism: `sentiment_weighted = Σ(sentiment_i * exp(-λ_h * age_i)) / Σ(exp(-λ_h * age_i))`, where λ_h varies by prediction horizon h ∈ {5, 30, 90} days.
+This repository implements a novel **Multi-Horizon Sentiment-Enhanced Temporal Fusion Transformer (TFT)** architecture for financial time series forecasting. Our primary contribution is the development of **horizon-specific temporal sentiment decay**, a mathematical framework that dynamically weights historical sentiment information based on forecasting horizon. The methodology integrates FinBERT-derived sentiment features with technical indicators through a sophisticated decay mechanism:
+
+ `sentiment_weighted = Σ(sentiment_i * exp(-λ_h * age_i)) / Σ(exp(-λ_h * age_i))`
+ 
+ Where λ_h varies by prediction horizon h ∈ {5, 30, 90} days.
 
 **Key Innovations:**
 - Horizon-specific temporal decay parameters for sentiment weighting
