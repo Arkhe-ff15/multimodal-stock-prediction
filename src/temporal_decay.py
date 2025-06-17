@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-TEMPORAL DECAY IMPLEMENTATION - Core Innovation
-==============================================
+TEMPORAL DECAY IMPLEMENTATION - CONFIG-INTEGRATED VERSION
+=========================================================
 
-✅ COMPLETE IMPLEMENTATION FOR YOUR PIPELINE:
-- Horizon-specific temporal sentiment decay (5d, 30d, 90d)
-- Mathematical framework for weighting historical sentiment
-- Integration with FNSPID processed sentiment data
-- Statistical validation and overfitting prevention
-- Ready for TFT model training
+✅ FIXES APPLIED:
+- Proper config.py integration
+- Removed all interactive prompts
+- Standardized file paths using config
+- Programmatic execution only
+- Fixed input file paths
+- Automated parameter configuration
 
 CORE INNOVATION: 
 sentiment_weighted = Σ(sentiment_i * exp(-λ_h * age_i)) / Σ(exp(-λ_h * age_i))
@@ -21,7 +22,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import Dict, List, Tuple, Optional, Union, Any
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 import warnings
 import logging
@@ -31,16 +31,12 @@ from pathlib import Path
 from scipy import stats
 import argparse
 
+# ✅ FIXED: Proper config integration
+from config import PipelineConfig, DecayParameters, create_decay_parameters_from_config, get_file_path
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Pipeline paths
-DATA_DIR = "data/processed"
-RESULTS_DIR = "results/temporal_decay"
-FNSPID_SENTIMENT_FILE = f"{DATA_DIR}/fnspid_daily_sentiment.csv"
-TEMPORAL_DECAY_OUTPUT = f"{DATA_DIR}/sentiment_with_temporal_decay.csv"
-VALIDATION_REPORT = f"{RESULTS_DIR}/temporal_decay_validation.json"
 
 @dataclass
 class SentimentItem:
@@ -51,46 +47,34 @@ class SentimentItem:
     article_count: int  # Number of articles aggregated
     source: str  # Data source identifier
 
-@dataclass 
-class DecayParameters:
-    """Horizon-specific decay parameters - Core Innovation"""
-    horizon: int  # Forecast horizon in days
-    lambda_decay: float  # Decay rate parameter
-    lookback_days: int  # Maximum lookback window
-    min_sentiment_count: int = 3  # Minimum articles for reliable sentiment
-    confidence_threshold: float = 0.5  # Minimum confidence threshold
-    
-    def __post_init__(self):
-        """Validate parameters to prevent overfitting"""
-        if self.lambda_decay <= 0 or self.lambda_decay > 1:
-            raise ValueError(f"Lambda decay must be in (0, 1], got {self.lambda_decay}")
-        if self.lookback_days < self.horizon:
-            warnings.warn(f"Lookback ({self.lookback_days}) < horizon ({self.horizon})")
-
-class TemporalDecayProcessor:
+class ConfigIntegratedTemporalDecayProcessor:
     """
-    Core class implementing horizon-specific temporal sentiment decay
+    ✅ FIXED: Config-integrated temporal decay processor
     
-    Mathematical Framework:
-    sentiment_weighted = Σ(sentiment_i * exp(-λ_h * age_i)) / Σ(exp(-λ_h * age_i))
-    
-    Where:
-    - λ_h: horizon-specific decay parameter (faster decay for shorter horizons)
-    - age_i: age of sentiment_i in trading days
-    - h: forecasting horizon (5, 30, 90 days)
+    FIXES:
+    - Uses centralized PipelineConfig
+    - Standardized file paths from config
+    - No interactive prompts
+    - Proper error handling
+    - Automated execution
     """
     
-    def __init__(self, decay_params: Dict[int, DecayParameters], 
-                 trading_calendar: Optional[pd.DatetimeIndex] = None):
-        """
-        Initialize temporal decay processor with horizon-specific parameters
+    def __init__(self, config: PipelineConfig):
+        self.config = config
         
-        Args:
-            decay_params: Dictionary mapping horizons to decay parameters
-            trading_calendar: Optional trading calendar for business day calculations
-        """
-        self.decay_params = decay_params
-        self.trading_calendar = trading_calendar
+        # ✅ Create decay parameters from config
+        self.decay_params = create_decay_parameters_from_config(config)
+        
+        # ✅ Use config paths
+        self.input_sentiment_file = config.fnspid_daily_sentiment_path
+        self.output_file = config.temporal_decay_data_path
+        self.validation_report_file = config.temporal_decay_validation_path
+        self.results_dir = config.temporal_decay_validation_path.parent
+        
+        # Ensure results directory exists
+        self.results_dir.mkdir(parents=True, exist_ok=True)
+        
+        self.trading_calendar = None  # Optional trading calendar
         self.validation_stats = {}
         self.processing_stats = {
             'records_processed': 0,
@@ -102,13 +86,15 @@ class TemporalDecayProcessor:
         # Validate configuration
         self._validate_parameters()
         
-        logger.info(f"🔬 Initialized TemporalDecayProcessor")
-        logger.info(f"   🎯 Horizons: {list(decay_params.keys())} days")
-        logger.info(f"   📈 Decay rates: {[p.lambda_decay for p in decay_params.values()]}")
+        logger.info(f"🔬 Config-Integrated TemporalDecayProcessor initialized")
+        logger.info(f"   🎯 Horizons: {list(self.decay_params.keys())} days")
+        logger.info(f"   📈 Decay rates: {[p.lambda_decay for p in self.decay_params.values()]}")
+        logger.info(f"   📁 Input: {self.input_sentiment_file}")
+        logger.info(f"   📁 Output: {self.output_file}")
         
     def _validate_parameters(self):
         """Validate decay parameters to prevent overfitting"""
-        required_horizons = [5, 30, 90]
+        required_horizons = self.config.target_horizons
         
         for horizon in required_horizons:
             if horizon not in self.decay_params:
@@ -162,11 +148,19 @@ class TemporalDecayProcessor:
         # Create SentimentItem objects
         sentiment_history = []
         for _, row in symbol_data.iterrows():
+            # ✅ Handle different possible column names for sentiment
+            sentiment_score = row.get('sentiment_compound', 
+                                    row.get('sentiment_score', 
+                                           row.get('confidence_weighted_sentiment', 0.0)))
+            confidence = row.get('confidence', 
+                               row.get('sentiment_confidence', 0.5))
+            article_count = row.get('article_count', 1)
+            
             sentiment_history.append(SentimentItem(
                 date=row['date'].to_pydatetime(),
-                score=row.get('sentiment_score', row.get('sentiment_compound', 0.0)),
-                confidence=row.get('confidence', row.get('sentiment_confidence', 0.5)),
-                article_count=row.get('article_count', 1),
+                score=sentiment_score,
+                confidence=confidence,
+                article_count=article_count,
                 source='fnspid'
             ))
         
@@ -288,13 +282,7 @@ class TemporalDecayProcessor:
     
     def batch_process_all_symbols(self, sentiment_data: pd.DataFrame) -> pd.DataFrame:
         """
-        Process temporal decay for all symbols and horizons
-        
-        Args:
-            sentiment_data: Complete sentiment dataset
-            
-        Returns:
-            DataFrame with temporal decay features for all horizons
+        ✅ FIXED: Process temporal decay for all symbols and horizons
         """
         logger.info("🔄 Processing temporal decay for all symbols and horizons...")
         
@@ -338,8 +326,6 @@ class TemporalDecayProcessor:
     def validate_decay_patterns(self, processed_data: pd.DataFrame) -> Dict[str, Any]:
         """
         Validate that decay patterns make intuitive sense - prevents overfitting
-        
-        Returns statistical validation of decay behavior
         """
         logger.info("🔍 Validating temporal decay patterns...")
         
@@ -368,7 +354,6 @@ class TemporalDecayProcessor:
             for horizon in self.decay_params.keys():
                 decay_col = f'sentiment_decay_{horizon}d'
                 weight_col = f'sentiment_weight_sum_{horizon}d'
-                count_col = f'sentiment_effective_count_{horizon}d'
                 
                 if decay_col in processed_data.columns:
                     decay_values = processed_data[decay_col].dropna()
@@ -385,7 +370,7 @@ class TemporalDecayProcessor:
                     
                     validation_results['horizon_analysis'][horizon] = horizon_stats
             
-            # Test decay effectiveness: shorter horizons should have higher decay rates
+            # Test decay effectiveness
             horizons = sorted(self.decay_params.keys())
             lambdas = [self.decay_params[h].lambda_decay for h in horizons]
             
@@ -393,12 +378,11 @@ class TemporalDecayProcessor:
             is_monotonic = all(lambdas[i] >= lambdas[i+1] for i in range(len(lambdas)-1))
             validation_results['statistical_tests']['monotonic_decay_rates'] = is_monotonic
             
-            # Correlation test: Check if decay values correlate negatively with time
+            # Correlation test
             correlation_tests = {}
             for horizon in horizons:
                 decay_col = f'sentiment_decay_{horizon}d'
                 if decay_col in processed_data.columns:
-                    # Create time index
                     sample_data = processed_data.dropna(subset=[decay_col]).copy()
                     sample_data['time_index'] = pd.to_datetime(sample_data['date']).map(lambda x: x.toordinal())
                     
@@ -436,17 +420,17 @@ class TemporalDecayProcessor:
             avg_coverage = np.mean([
                 h['effective_coverage'] for h in validation_results['horizon_analysis'].values()
             ])
-            validation_score += min(25, avg_coverage * 25)  # Up to 25 points for coverage
+            validation_score += min(25, avg_coverage * 25)
             
             significant_correlations = sum([
                 1 for t in correlation_tests.values() if abs(t['correlation']) > 0.1
             ])
-            validation_score += min(25, significant_correlations * 8)  # Up to 25 points
+            validation_score += min(25, significant_correlations * 8)
             
             avg_sufficient_data = np.mean([
                 q['sufficient_data_pct'] for q in quality_metrics.values()
             ])
-            validation_score += min(25, avg_sufficient_data / 4)  # Up to 25 points
+            validation_score += min(25, avg_sufficient_data / 4)
             
             validation_results['overall_validation_score'] = validation_score
             
@@ -455,180 +439,38 @@ class TemporalDecayProcessor:
             validation_results['validation_error'] = str(e)
         
         return validation_results
-    
-    def create_visualization(self, processed_data: pd.DataFrame, 
-                           validation_results: Dict, 
-                           save_path: str = None) -> None:
-        """Create comprehensive visualization of decay patterns"""
-        logger.info("📊 Creating temporal decay visualizations...")
-        
-        try:
-            fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-            fig.suptitle('Temporal Decay Analysis - Core Innovation', fontsize=16, fontweight='bold')
-            
-            colors = {5: '#ff6b6b', 30: '#4ecdc4', 90: '#45b7d1'}
-            horizons = sorted(self.decay_params.keys())
-            
-            # Plot 1: Decay parameter comparison
-            ax1 = axes[0, 0]
-            lambdas = [self.decay_params[h].lambda_decay for h in horizons]
-            bars = ax1.bar(range(len(horizons)), lambdas, 
-                          color=[colors[h] for h in horizons])
-            ax1.set_xlabel('Forecast Horizon (Days)')
-            ax1.set_ylabel('Decay Rate (λ)')
-            ax1.set_title('Horizon-Specific Decay Parameters')
-            ax1.set_xticks(range(len(horizons)))
-            ax1.set_xticklabels([f'{h}d' for h in horizons])
-            
-            # Add value labels
-            for bar, lamb in zip(bars, lambdas):
-                ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
-                        f'{lamb:.3f}', ha='center', va='bottom')
-            
-            # Plot 2: Decay sentiment distributions
-            ax2 = axes[0, 1]
-            for horizon in horizons:
-                decay_col = f'sentiment_decay_{horizon}d'
-                if decay_col in processed_data.columns:
-                    values = processed_data[decay_col].dropna()
-                    ax2.hist(values, bins=30, alpha=0.6, label=f'{horizon}d', 
-                           color=colors[horizon], density=True)
-            
-            ax2.set_xlabel('Decay-Weighted Sentiment')
-            ax2.set_ylabel('Density')
-            ax2.set_title('Sentiment Distribution by Horizon')
-            ax2.legend()
-            ax2.grid(True, alpha=0.3)
-            
-            # Plot 3: Weight sum comparison
-            ax3 = axes[0, 2]
-            weight_data = []
-            for horizon in horizons:
-                weight_col = f'sentiment_weight_sum_{horizon}d'
-                if weight_col in processed_data.columns:
-                    weights = processed_data[weight_col].dropna()
-                    weight_data.append(weights)
-            
-            if weight_data:
-                ax3.boxplot(weight_data, labels=[f'{h}d' for h in horizons])
-                ax3.set_xlabel('Forecast Horizon')
-                ax3.set_ylabel('Weight Sum')
-                ax3.set_title('Weight Sum Distribution')
-                ax3.grid(True, alpha=0.3)
-            
-            # Plot 4: Effective count comparison
-            ax4 = axes[1, 0]
-            for horizon in horizons:
-                count_col = f'sentiment_effective_count_{horizon}d'
-                if count_col in processed_data.columns:
-                    counts = processed_data[count_col].dropna()
-                    mean_count = counts.mean()
-                    ax4.bar(horizon, mean_count, color=colors[horizon], alpha=0.7,
-                           label=f'{horizon}d (μ={mean_count:.1f})')
-            
-            ax4.set_xlabel('Forecast Horizon (Days)')
-            ax4.set_ylabel('Mean Effective Count')
-            ax4.set_title('Average Effective Sentiment Count')
-            ax4.legend()
-            
-            # Plot 5: Quality distribution
-            ax5 = axes[1, 1]
-            quality_data = {}
-            for horizon in horizons:
-                quality_col = f'sentiment_quality_{horizon}d'
-                if quality_col in processed_data.columns:
-                    quality_dist = processed_data[quality_col].value_counts(normalize=True)
-                    quality_data[horizon] = quality_dist.get('sufficient', 0) * 100
-            
-            if quality_data:
-                bars = ax5.bar(quality_data.keys(), quality_data.values(),
-                              color=[colors[h] for h in quality_data.keys()])
-                ax5.set_xlabel('Forecast Horizon (Days)')
-                ax5.set_ylabel('Sufficient Data (%)')
-                ax5.set_title('Data Quality by Horizon')
-                
-                # Add value labels
-                for bar, value in zip(bars, quality_data.values()):
-                    ax5.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1,
-                            f'{value:.1f}%', ha='center', va='bottom')
-            
-            # Plot 6: Validation summary
-            ax6 = axes[1, 2]
-            validation_score = validation_results.get('overall_validation_score', 0)
-            
-            summary_text = f"Validation Summary\n\n"
-            summary_text += f"Overall Score: {validation_score:.0f}/100\n\n"
-            
-            if 'statistical_tests' in validation_results:
-                monotonic = validation_results['statistical_tests'].get('monotonic_decay_rates', False)
-                summary_text += f"✓ Monotonic Decay: {'PASS' if monotonic else 'FAIL'}\n"
-            
-            if 'overall_stats' in validation_results:
-                stats = validation_results['overall_stats']
-                summary_text += f"\nRecords: {stats.get('total_records', 0):,}\n"
-                summary_text += f"Symbols: {stats.get('symbols_count', 0)}\n"
-                
-            summary_text += f"\n🎯 Innovation Validated:\n"
-            summary_text += f"• Horizon-specific decay rates\n"
-            summary_text += f"• Quality-weighted sentiment\n"
-            summary_text += f"• Statistical significance\n"
-            summary_text += f"• Overfitting prevention"
-            
-            ax6.text(0.05, 0.95, summary_text, transform=ax6.transAxes, 
-                    verticalalignment='top', fontsize=10,
-                    bbox=dict(boxstyle="round,pad=0.5", facecolor="lightblue", alpha=0.7))
-            ax6.set_xlim(0, 1)
-            ax6.set_ylim(0, 1)
-            ax6.axis('off')
-            
-            plt.tight_layout()
-            
-            if save_path:
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                logger.info(f"📊 Visualization saved: {save_path}")
-            
-            plt.show()
-            
-        except Exception as e:
-            logger.error(f"❌ Visualization failed: {e}")
 
-def load_fnspid_sentiment_data(file_path: str = FNSPID_SENTIMENT_FILE) -> pd.DataFrame:
-    """Load FNSPID sentiment data with validation"""
+def load_fnspid_sentiment_data(config: PipelineConfig) -> pd.DataFrame:
+    """✅ FIXED: Load FNSPID sentiment data using config paths"""
     logger.info(f"📥 Loading FNSPID sentiment data...")
     
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"FNSPID sentiment file not found: {file_path}")
+    input_file = config.fnspid_daily_sentiment_path
+    
+    if not input_file.exists():
+        raise FileNotFoundError(f"FNSPID sentiment file not found: {input_file}")
     
     try:
-        data = pd.read_csv(file_path)
+        data = pd.read_csv(input_file)
         
         # Validate required columns
-        required_cols = ['symbol', 'date', 'sentiment_compound', 'confidence', 'article_count']
+        required_cols = ['symbol', 'date']
         missing_cols = [col for col in required_cols if col not in data.columns]
         
         if missing_cols:
-            # Try alternative column names
-            alt_mapping = {
-                'sentiment_compound': ['sentiment_score'],
-                'confidence': ['sentiment_confidence'],
-                'article_count': ['sentiment_count']
-            }
-            
-            for missing_col in missing_cols:
-                if missing_col in alt_mapping:
-                    for alt_col in alt_mapping[missing_col]:
-                        if alt_col in data.columns:
-                            data[missing_col] = data[alt_col]
-                            break
+            raise ValueError(f"Missing required columns: {missing_cols}")
         
-        # Final validation
-        final_missing = [col for col in required_cols if col not in data.columns]
-        if final_missing:
-            raise ValueError(f"Missing required columns: {final_missing}")
+        # Check for sentiment columns (flexible)
+        sentiment_cols = [col for col in data.columns if any(
+            pattern in col.lower() for pattern in ['sentiment', 'confidence']
+        )]
+        
+        if not sentiment_cols:
+            raise ValueError("No sentiment columns found")
         
         logger.info(f"✅ Loaded sentiment data: {data.shape}")
         logger.info(f"   🏢 Symbols: {data['symbol'].nunique()}")
         logger.info(f"   📅 Date range: {data['date'].min()} to {data['date'].max()}")
+        logger.info(f"   🎭 Sentiment columns: {sentiment_cols}")
         
         return data
         
@@ -636,213 +478,28 @@ def load_fnspid_sentiment_data(file_path: str = FNSPID_SENTIMENT_FILE) -> pd.Dat
         logger.error(f"❌ Failed to load sentiment data: {e}")
         raise
 
-def create_optimal_decay_parameters() -> Dict[int, DecayParameters]:
-    """Create research-optimized decay parameters"""
+def run_temporal_decay_processing_programmatic(config: PipelineConfig) -> Tuple[bool, Dict[str, Any]]:
+    """
+    ✅ FIXED: Programmatic temporal decay processing (no interactive prompts)
     
-    # Research-based parameters designed to prevent overfitting
-    # Faster decay for shorter horizons, slower for longer horizons
-    
-    decay_params = {
-        5: DecayParameters(
-            horizon=5,
-            lambda_decay=0.15,  # Moderate decay for 5-day predictions
-            lookback_days=30,   # Look back 30 days
-            min_sentiment_count=2,
-            confidence_threshold=0.6
-        ),
-        30: DecayParameters(
-            horizon=30,
-            lambda_decay=0.08,  # Slower decay for 30-day predictions
-            lookback_days=90,   # Look back 90 days
-            min_sentiment_count=3,
-            confidence_threshold=0.5
-        ),
-        90: DecayParameters(
-            horizon=90,
-            lambda_decay=0.03,  # Slowest decay for 90-day predictions
-            lookback_days=180,  # Look back 180 days
-            min_sentiment_count=4,
-            confidence_threshold=0.5
-        )
-    }
-    
-    logger.info("🎯 Created optimal decay parameters:")
-    for horizon, params in decay_params.items():
-        logger.info(f"   {horizon}d: λ={params.lambda_decay}, lookback={params.lookback_days}d")
-    
-    return decay_params
-
-def save_results(processed_data: pd.DataFrame, 
-                validation_results: Dict,
-                processing_stats: Dict) -> str:
-    """Save temporal decay results"""
-    logger.info("💾 Saving temporal decay results...")
+    Args:
+        config: PipelineConfig object from config.py
+        
+    Returns:
+        Tuple[bool, Dict]: (success, results_dict)
+    """
     
     try:
-        # Ensure directories exist
-        os.makedirs(DATA_DIR, exist_ok=True)
-        os.makedirs(RESULTS_DIR, exist_ok=True)
+        logger.info("🔬 Starting programmatic temporal decay processing")
         
-        # Save processed data
-        processed_data.to_csv(TEMPORAL_DECAY_OUTPUT, index=False)
-        logger.info(f"✅ Temporal decay data saved: {TEMPORAL_DECAY_OUTPUT}")
-        
-        # Save validation report
-        validation_report = {
-            'validation_results': validation_results,
-            'processing_stats': processing_stats,
-            'timestamp': datetime.now().isoformat(),
-            'methodology': {
-                'decay_formula': 'sentiment_weighted = Σ(sentiment_i * exp(-λ_h * age_i)) / Σ(exp(-λ_h * age_i))',
-                'innovation': 'Horizon-specific decay parameters (λ_h)',
-                'overfitting_prevention': [
-                    'Quality filtering by confidence and article count',
-                    'Statistical validation of decay patterns',
-                    'Monotonicity constraints on decay parameters'
-                ]
-            }
-        }
-        
-        with open(VALIDATION_REPORT, 'w') as f:
-            json.dump(validation_report, f, indent=2, default=str)
-        
-        logger.info(f"✅ Validation report saved: {VALIDATION_REPORT}")
-        
-        return TEMPORAL_DECAY_OUTPUT
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to save results: {e}")
-        raise
-
-def main():
-    """Main execution with comprehensive temporal decay processing"""
-    
-    parser = argparse.ArgumentParser(
-        description='Temporal Decay Processing - Core Innovation',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-🔬 TEMPORAL DECAY PROCESSING - CORE INNOVATION
-
-This script implements horizon-specific temporal sentiment decay:
-
-Mathematical Framework:
-sentiment_weighted = Σ(sentiment_i * exp(-λ_h * age_i)) / Σ(exp(-λ_h * age_i))
-
-Where λ_h varies by forecasting horizon h:
-• 5-day horizon:  λ = 0.15 (faster decay)
-• 30-day horizon: λ = 0.08 (moderate decay)  
-• 90-day horizon: λ = 0.03 (slower decay)
-
-Features:
-• Processes FNSPID sentiment data with temporal weighting
-• Validates mathematical patterns to prevent overfitting
-• Creates visualization of decay effectiveness
-• Outputs TFT-ready features
-
-Examples:
-  python src/temporal_decay.py                    # Full processing
-  python src/temporal_decay.py --validate-only   # Just validation
-  python src/temporal_decay.py --no-viz          # Skip visualization
-        """
-    )
-    
-    parser.add_argument('--input-file', type=str, default=FNSPID_SENTIMENT_FILE,
-                       help='Input sentiment data file')
-    parser.add_argument('--output-file', type=str, default=TEMPORAL_DECAY_OUTPUT,
-                       help='Output file for decay-processed data')
-    parser.add_argument('--validate-only', action='store_true',
-                       help='Only run validation on existing processed data')
-    parser.add_argument('--no-viz', action='store_true',
-                       help='Skip visualization creation')
-    parser.add_argument('--custom-params', action='store_true',
-                       help='Use custom decay parameters')
-    
-    args = parser.parse_args()
-    
-    print("🔬 TEMPORAL DECAY PROCESSING - CORE INNOVATION")
-    print("=" * 70)
-    print("📊 Horizon-specific sentiment decay weighting")
-    print("🎯 Mathematical innovation for TFT model enhancement")
-    print("=" * 70)
-    
-    try:
         # Load sentiment data
-        sentiment_data = load_fnspid_sentiment_data(args.input_file)
-        
-        if args.validate_only:
-            # Just validate existing processed data
-            if os.path.exists(args.output_file):
-                processed_data = pd.read_csv(args.output_file)
-                decay_params = create_optimal_decay_parameters()
-                processor = TemporalDecayProcessor(decay_params)
-                validation_results = processor.validate_decay_patterns(processed_data)
-                
-                print("\n🔍 VALIDATION RESULTS:")
-                print(f"   📊 Overall Score: {validation_results.get('overall_validation_score', 0):.0f}/100")
-                
-                if not args.no_viz:
-                    viz_path = f"{RESULTS_DIR}/temporal_decay_validation.png"
-                    processor.create_visualization(processed_data, validation_results, viz_path)
-            else:
-                print(f"❌ No processed data found at {args.output_file}")
-            return
-        
-        # Create decay parameters
-        if args.custom_params:
-            print("\n⚙️ Custom decay parameter configuration:")
-            
-            try:
-                # Get custom parameters from user
-                decay_params = {}
-                for horizon in [5, 30, 90]:
-                    print(f"\n{horizon}-day horizon:")
-                    lambda_val = float(input(f"  Lambda decay (0.01-0.5, default varies): ") or 
-                                     (0.15 if horizon == 5 else 0.08 if horizon == 30 else 0.03))
-                    lookback = int(input(f"  Lookback days (default {horizon*6}): ") or horizon*6)
-                    min_count = int(input(f"  Min sentiment count (default {horizon//15 + 2}): ") or 
-                                  (horizon//15 + 2))
-                    
-                    decay_params[horizon] = DecayParameters(
-                        horizon=horizon,
-                        lambda_decay=lambda_val,
-                        lookback_days=lookback,
-                        min_sentiment_count=min_count
-                    )
-                
-                print("✅ Custom parameters configured")
-                
-            except Exception as e:
-                print(f"❌ Custom parameter configuration failed: {e}")
-                print("🔄 Using optimal parameters instead")
-                decay_params = create_optimal_decay_parameters()
-        else:
-            decay_params = create_optimal_decay_parameters()
+        sentiment_data = load_fnspid_sentiment_data(config)
         
         # Initialize processor
-        print(f"\n🔬 Initializing Temporal Decay Processor...")
-        processor = TemporalDecayProcessor(decay_params)
-        
-        # Show processing plan
-        print(f"\n📋 Processing Plan:")
-        print(f"   📊 Input records: {len(sentiment_data):,}")
-        print(f"   🏢 Symbols: {sentiment_data['symbol'].nunique()}")
-        print(f"   📅 Date range: {sentiment_data['date'].min()} to {sentiment_data['date'].max()}")
-        print(f"   🎯 Horizons: {list(decay_params.keys())} days")
-        print(f"   📈 Decay rates: {[f'{p.lambda_decay:.3f}' for p in decay_params.values()]}")
-        
-        # Estimate processing time
-        estimated_calculations = len(sentiment_data) * len(decay_params)
-        estimated_minutes = estimated_calculations / 1000  # Rough estimate
-        print(f"   ⏱️ Estimated time: {estimated_minutes:.1f}-{estimated_minutes*2:.1f} minutes")
-        
-        # Confirm processing
-        confirm = input(f"\n🚀 Proceed with temporal decay processing? (Y/n): ").strip().lower()
-        if confirm in ['n', 'no']:
-            print("❌ Processing cancelled")
-            return
+        processor = ConfigIntegratedTemporalDecayProcessor(config)
         
         # Process temporal decay
-        print(f"\n🔄 Starting temporal decay processing...")
+        logger.info("🔄 Processing temporal decay...")
         start_time = datetime.now()
         
         processed_data = processor.batch_process_all_symbols(sentiment_data)
@@ -850,76 +507,145 @@ Examples:
         processing_time = (datetime.now() - start_time).total_seconds()
         processor.processing_stats['processing_time'] = processing_time
         
-        print(f"\n✅ TEMPORAL DECAY PROCESSING COMPLETED!")
-        print(f"   ⏱️ Processing time: {processing_time:.1f} seconds ({processing_time/60:.1f} minutes)")
-        print(f"   📊 Output records: {len(processed_data):,}")
-        print(f"   🧮 Decay calculations: {processor.processing_stats['decay_calculations']:,}")
-        
         # Validate results
-        print(f"\n🔍 Validating temporal decay patterns...")
+        logger.info("🔍 Validating decay patterns...")
         validation_results = processor.validate_decay_patterns(processed_data)
         
-        validation_score = validation_results.get('overall_validation_score', 0)
-        print(f"   📊 Validation Score: {validation_score:.0f}/100")
-        
-        if validation_score >= 75:
-            print("   ✅ EXCELLENT - Decay patterns validated!")
-        elif validation_score >= 50:
-            print("   ✅ GOOD - Decay patterns acceptable")
-        else:
-            print("   ⚠️ WARNING - Decay patterns may need adjustment")
-        
-        # Show key validation results
-        if 'statistical_tests' in validation_results:
-            tests = validation_results['statistical_tests']
-            monotonic = tests.get('monotonic_decay_rates', False)
-            print(f"   📈 Monotonic decay rates: {'✅ PASS' if monotonic else '❌ FAIL'}")
-        
-        if 'quality_metrics' in validation_results:
-            avg_sufficient = np.mean([
-                q['sufficient_data_pct'] for q in validation_results['quality_metrics'].values()
-            ])
-            print(f"   📊 Average data sufficiency: {avg_sufficient:.1f}%")
-        
         # Save results
-        output_path = save_results(processed_data, validation_results, processor.processing_stats)
+        logger.info("💾 Saving temporal decay results...")
+        processed_data.to_csv(processor.output_file, index=False)
         
-        # Create visualization
-        if not args.no_viz:
-            print(f"\n📊 Creating temporal decay visualizations...")
-            viz_path = f"{RESULTS_DIR}/temporal_decay_analysis.png"
-            os.makedirs(RESULTS_DIR, exist_ok=True)
-            processor.create_visualization(processed_data, validation_results, viz_path)
+        # Save validation report
+        validation_report = {
+            'validation_results': validation_results,
+            'processing_stats': processor.processing_stats,
+            'timestamp': datetime.now().isoformat(),
+            'config_used': {
+                'decay_parameters': config.temporal_decay_params,
+                'target_horizons': config.target_horizons
+            }
+        }
         
-        # Show sample results
-        print(f"\n📋 Sample Temporal Decay Results:")
-        sample_cols = ['symbol', 'date'] + [col for col in processed_data.columns if 'sentiment_decay_' in col]
-        print(processed_data[sample_cols].head())
+        with open(processor.validation_report_file, 'w') as f:
+            json.dump(validation_report, f, indent=2, default=str)
         
-        print(f"\n🎯 TEMPORAL DECAY INNOVATION COMPLETE!")
-        print(f"📁 Output file: {output_path}")
-        print(f"📊 Validation report: {VALIDATION_REPORT}")
+        validation_score = validation_results.get('overall_validation_score', 0)
         
-        print(f"\n🔄 NEXT STEPS:")
-        print("1. ✅ Temporal decay features generated")
-        print("2. 🔗 Run sentiment.py to integrate with core dataset:")
-        print("   python src/sentiment.py")
-        print("3. 🤖 Train enhanced TFT models with decay features:")
-        print("   python src/models.py")
-        print("4. 📊 Compare performance against baseline models")
-        
-        # Feature summary
-        decay_features = [col for col in processed_data.columns if 'sentiment_decay_' in col]
-        print(f"\n🎯 Decay Features Created:")
-        for feature in decay_features:
-            coverage = (processed_data[feature] != 0).mean() * 100
-            print(f"   • {feature}: {coverage:.1f}% coverage")
+        return True, {
+            'status': 'completed',
+            'stage': 'temporal_decay',
+            'processing_summary': {
+                'input_records': len(sentiment_data),
+                'output_records': len(processed_data),
+                'symbols_processed': processed_data['symbol'].nunique(),
+                'processing_time': processing_time,
+                'decay_calculations': processor.processing_stats['decay_calculations']
+            },
+            'validation': {
+                'overall_score': validation_score,
+                'quality_status': 'excellent' if validation_score >= 75 else 'good' if validation_score >= 50 else 'needs_improvement'
+            },
+            'output_files': {
+                'temporal_decay_data': str(processor.output_file),
+                'validation_report': str(processor.validation_report_file)
+            },
+            'decay_features_created': [col for col in processed_data.columns if 'sentiment_decay_' in col],
+            'next_stage_ready': True
+        }
         
     except Exception as e:
-        print(f"\n❌ Temporal decay processing failed: {e}")
+        logger.error(f"❌ Temporal decay processing failed: {e}")
+        return False, {
+            'error': str(e),
+            'error_type': type(e).__name__,
+            'stage': 'temporal_decay',
+            'suggestion': 'Check that FNSPID processing completed successfully'
+        }
+
+# =============================================================================
+# MAIN EXECUTION (NO INTERACTIVE PROMPTS)
+# =============================================================================
+
+def main():
+    """
+    ✅ FIXED: Main execution without interactive prompts
+    """
+    
+    parser = argparse.ArgumentParser(
+        description='Temporal Decay Processing - Config Integrated',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    parser.add_argument('--config-type', type=str, default='default',
+                       choices=['default', 'quick_test', 'research'],
+                       help='Configuration type to use')
+    parser.add_argument('--validate-only', action='store_true',
+                       help='Only run validation on existing processed data')
+    
+    args = parser.parse_args()
+    
+    print("🔬 TEMPORAL DECAY PROCESSING - CONFIG INTEGRATED")
+    print("=" * 60)
+    
+    try:
+        # ✅ Load config without interactive prompts
+        from config import get_default_config, get_quick_test_config, get_research_config
+        
+        if args.config_type == 'quick_test':
+            config = get_quick_test_config()
+        elif args.config_type == 'research':
+            config = get_research_config()
+        else:
+            config = get_default_config()
+        
+        print(f"📊 Configuration: {args.config_type}")
+        print(f"🎯 Horizons: {config.target_horizons}")
+        print(f"📈 Decay rates: {[config.temporal_decay_params[h]['lambda_decay'] for h in config.target_horizons]}")
+        
+        if args.validate_only:
+            # Just validate existing processed data
+            if config.temporal_decay_data_path.exists():
+                processed_data = pd.read_csv(config.temporal_decay_data_path)
+                processor = ConfigIntegratedTemporalDecayProcessor(config)
+                validation_results = processor.validate_decay_patterns(processed_data)
+                
+                print(f"\n🔍 VALIDATION RESULTS:")
+                print(f"   📊 Overall Score: {validation_results.get('overall_validation_score', 0):.0f}/100")
+            else:
+                print(f"❌ No processed data found at {config.temporal_decay_data_path}")
+            return
+        
+        # ✅ Run programmatic processing
+        success, results = run_temporal_decay_processing_programmatic(config)
+        
+        if success:
+            print(f"\n✅ TEMPORAL DECAY PROCESSING COMPLETED!")
+            print(f"   ⏱️ Processing time: {results['processing_summary']['processing_time']:.1f} seconds")
+            print(f"   📊 Output records: {results['processing_summary']['output_records']:,}")
+            print(f"   🧮 Decay calculations: {results['processing_summary']['decay_calculations']:,}")
+            print(f"   📊 Validation score: {results['validation']['overall_score']:.0f}/100")
+            print(f"   📁 Output file: {results['output_files']['temporal_decay_data']}")
+            
+            # Show decay features created
+            decay_features = results['decay_features_created']
+            print(f"\n🎯 Decay Features Created ({len(decay_features)}):")
+            for feature in decay_features:
+                print(f"   • {feature}")
+            
+            print(f"\n🔄 NEXT STEPS:")
+            print("1. ✅ Temporal decay features generated")
+            print("2. 🔗 Run sentiment integration:")
+            print("   python src/sentiment.py")
+            print("3. 🤖 Train enhanced TFT models")
+            
+        else:
+            print(f"\n❌ Temporal decay processing failed: {results['error']}")
+            print(f"💡 Suggestion: {results.get('suggestion', 'Check logs for details')}")
+        
+    except Exception as e:
+        print(f"\n❌ Execution failed: {e}")
         import traceback
         traceback.print_exc()
-
 
 if __name__ == "__main__":
     main()
