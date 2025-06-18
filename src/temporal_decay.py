@@ -19,6 +19,48 @@ Where λ_h varies by forecasting horizon h (5, 30, 90 days)
 from dataclasses import dataclass
 import numpy as np
 import pandas as pd
+def generate_synthetic_sentiment_data(config: PipelineConfig) -> pd.DataFrame:
+    """Generate synthetic sentiment data for testing/fallback"""
+    
+    logger.info("🎭 Generating synthetic sentiment data...")
+    
+    # Create date range for sentiment data
+    dates = pd.date_range(
+        start=config.start_date,
+        end=config.end_date,
+        freq='D'
+    )
+    
+    # Generate synthetic sentiment for each symbol and date
+    synthetic_records = []
+    
+    for symbol in config.symbols:
+        for date in dates:
+            # Generate realistic sentiment values
+            sentiment_score = np.random.normal(0.0, 0.3)  # Neutral with some variation
+            sentiment_magnitude = np.abs(sentiment_score) + np.random.uniform(0.1, 0.5)
+            
+            record = {
+                'symbol': symbol,
+                'date': date.strftime('%Y-%m-%d'),
+                'sentiment_score': sentiment_score,
+                'sentiment_magnitude': sentiment_magnitude,
+                'positive_ratio': max(0, sentiment_score) / sentiment_magnitude if sentiment_magnitude > 0 else 0.5,
+                'negative_ratio': max(0, -sentiment_score) / sentiment_magnitude if sentiment_magnitude > 0 else 0.5,
+                'neutral_ratio': 1 - abs(sentiment_score) / sentiment_magnitude if sentiment_magnitude > 0 else 0.0,
+                'article_count': np.random.randint(1, 20),
+                'source': 'synthetic'
+            }
+            synthetic_records.append(record)
+    
+    synthetic_df = pd.DataFrame(synthetic_records)
+    
+    logger.info(f"✅ Generated synthetic sentiment: {len(synthetic_df):,} records")
+    logger.info(f"   📊 Symbols: {synthetic_df['symbol'].nunique()}")
+    logger.info(f"   📅 Date range: {synthetic_df['date'].min()} to {synthetic_df['date'].max()}")
+    
+    return synthetic_df
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import Dict, List, Tuple, Optional, Union, Any
