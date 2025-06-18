@@ -177,7 +177,15 @@ class ConfigIntegratedPipelineOrchestrator:
             self.pipeline_state['stage_reports']['temporal_decay'] = results
             
             logger.info(f"✅ Temporal decay completed: {results['processing_summary']['output_records']:,} records")
-            logger.info(f"   📊 Validation score: {results['validation']['overall_score']:.0f}/100")
+            # Safe validation score access
+            if 'validation' in results and 'overall_score' in results.get('validation', {}):
+                # Safe validation score access
+                if 'validation' in results and 'overall_score' in results.get('validation', {}):
+                    logger.info(f"   📊 Validation score: {results.get('validation', {})['overall_score']:.0f}/100")
+                else:
+                    logger.info(f"   📊 Processing completed: {results.get('records', 'N/A')} records")
+            else:
+                logger.info(f"   📊 Processing completed: {results.get('records', 'Unknown')} records")
             return True
             
         except ImportError as e:
