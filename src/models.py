@@ -47,6 +47,9 @@ import time
 from tqdm import tqdm
 
 # ✅ FIXED: Proper config integration
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import PipelineConfig, ModelConfig, get_default_config
 
 # PyTorch Forecasting imports with robust error handling

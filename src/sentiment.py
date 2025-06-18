@@ -26,6 +26,9 @@ import json
 import shutil
 
 # ✅ FIXED: Proper config integration
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import PipelineConfig, get_file_path
 
 # Setup logging

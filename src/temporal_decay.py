@@ -16,7 +16,7 @@ sentiment_weighted = Σ(sentiment_i * exp(-λ_h * age_i)) / Σ(exp(-λ_h * age_i
 
 Where λ_h varies by forecasting horizon h (5, 30, 90 days)
 """
-
+from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -32,6 +32,9 @@ from scipy import stats
 import argparse
 
 # ✅ FIXED: Proper config integration
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import PipelineConfig, DecayParameters, create_decay_parameters_from_config, get_file_path
 
 # Set up logging
