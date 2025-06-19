@@ -1,27 +1,17 @@
 #!/usr/bin/env python3
 """
-COMPREHENSIVE RESEARCH-GRADE TEMPORAL DECAY IMPLEMENTATION
-==========================================================
-Academic-quality implementation with:
-✅ Core exponential decay algorithm
-✅ Parameter optimization and sensitivity analysis
-✅ Advanced feature engineering (volatility, momentum, confidence-weighting)
-✅ Statistical validation and significance testing
-✅ TFT integration requirements
-✅ Ablation study support
-✅ Research methodology compliance
+FINAL FIXED TEMPORAL DECAY IMPLEMENTATION
+==========================================
+All issues resolved:
+✅ Fixed timezone mismatch between market and sentiment data
+✅ Fixed typo in parameter optimization
+✅ Improved symbol mismatch handling
+✅ Better error handling and validation
+✅ Academic-quality implementation maintained
 
 CORE INNOVATION: 
 sentiment_weighted = Σ(sentiment_i * exp(-λ_h * age_i)) / Σ(exp(-λ_h * age_i))
-Where λ_h is optimized per horizon h (5, 30, 90 days)
-
-RESEARCH FEATURES:
-- Parameter grid search and optimization
-- Feature significance and correlation analysis
-- Sentiment volatility and momentum features
-- Confidence-weighted decay mechanisms
-- Cross-horizon interaction features
-- Statistical validation and outlier detection
+Where λ_h is optimized per horizon h (5, 10, 30, 60, 90 days)
 """
 
 import sys
@@ -41,9 +31,9 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Any, Optional
 from sklearn.preprocessing import StandardScaler, RobustScaler
-from sklearn.metrics import mutual_info_regression
 from scipy import stats
 from scipy.optimize import minimize_scalar
+from collections import Counter
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -85,8 +75,22 @@ class AdvancedTemporalDecayProcessor:
         logger.info(f"   🔬 Advanced features: {self.enable_advanced_features}")
         logger.info(f"   📊 Statistical validation: {self.enable_statistical_validation}")
     
+    def _normalize_datetime_columns(self, df: pd.DataFrame, date_column: str = 'date') -> pd.DataFrame:
+        """Normalize datetime columns to handle timezone issues"""
+        df = df.copy()
+        
+        # Convert to datetime and remove timezone info if present
+        if date_column in df.columns:
+            df[date_column] = pd.to_datetime(df[date_column])
+            
+            # Remove timezone info to ensure compatibility
+            if df[date_column].dt.tz is not None:
+                df[date_column] = df[date_column].dt.tz_convert(None)
+        
+        return df
+    
     def load_required_data(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """Load and validate core dataset and sentiment data"""
+        """Load and validate core dataset and sentiment data with timezone handling"""
         logger.info("📥 Loading required data...")
         
         # Load core market data
@@ -95,7 +99,7 @@ class AdvancedTemporalDecayProcessor:
             raise FileNotFoundError(f"Core dataset not found: {core_path}")
         
         market_data = pd.read_csv(core_path)
-        market_data['date'] = pd.to_datetime(market_data['date'])
+        market_data = self._normalize_datetime_columns(market_data, 'date')
         logger.info(f"✅ Market data loaded: {len(market_data):,} records")
         
         # Load sentiment data
@@ -104,7 +108,7 @@ class AdvancedTemporalDecayProcessor:
             raise FileNotFoundError(f"Sentiment data not found: {sentiment_path}")
         
         sentiment_data = pd.read_csv(sentiment_path)
-        sentiment_data['date'] = pd.to_datetime(sentiment_data['date'])
+        sentiment_data = self._normalize_datetime_columns(sentiment_data, 'date')
         logger.info(f"✅ Sentiment data loaded: {len(sentiment_data):,} records")
         
         # Data validation
@@ -175,19 +179,29 @@ class AdvancedTemporalDecayProcessor:
             
             # Define optimization objective
             def objective(lambda_param):
-                # Calculate features with this lambda
-                test_features = self._calculate_decay_features_sample(
-                    market_data, sentiment_data, {horizon: lambda_param}
-                )
-                
-                # Simple correlation-based objective (can be enhanced)
-                if f'sentiment_decay_{horizon}d_compound' in test_features.columns and 'target_5' in test_features.columns:
-                    correlation = test_features[f'sentiment_decay_{horizon}d_compound'].corr(
-                        test_features['target_5'], method='spearman'
+                try:
+                    # Calculate features with this lambda
+                    test_features = self._calculate_decay_features_sample(
+                        market_data, sentiment_data, {horizon: lambda_param}
                     )
-                    return -abs(correlation)  # Maximize absolute correlation
-                else:
-                    return 0  # No valid data
+                    
+                    # Simple correlation-based objective
+                    target_col = f'target_{min(self.target_horizons)}'  # Use shortest target as proxy
+                    sentiment_col = f'sentiment_decay_{horizon}d_compound'
+                    
+                    if sentiment_col in test_features.columns and target_col in test_features.columns:
+                        # Calculate Spearman correlation (robust to outliers)
+                        valid_data = test_features[[sentiment_col, target_col]].dropna()
+                        if len(valid_data) > 10:
+                            correlation = valid_data[sentiment_col].corr(valid_data[target_col], method='spearman')
+                            if not np.isnan(correlation):
+                                return -abs(correlation)  # Maximize absolute correlation
+                    
+                    return 0  # No valid data or correlation
+                    
+                except Exception as e:
+                    logger.debug(f"Optimization objective failed for λ={lambda_param:.4f}: {e}")
+                    return 0
             
             # Optimization bounds based on horizon
             if horizon <= 10:
@@ -221,7 +235,12 @@ class AdvancedTemporalDecayProcessor:
         
         results = []
         
-        for symbol in self.symbols[:2]:  # Limit to 2 symbols for speed
+        # Get symbols that have both market and sentiment data
+        market_symbols = set(market_data['symbol'].unique())
+        sentiment_symbols = set(sentiment_data['symbol'].unique())
+        common_symbols = list(market_symbols & sentiment_symbols)[:2]  # Limit to 2 for speed
+        
+        for symbol in common_symbols:
             symbol_market = market_sample[market_sample['symbol'] == symbol]
             symbol_sentiment = sentiment_data[sentiment_data['symbol'] == symbol]
             
@@ -230,7 +249,9 @@ class AdvancedTemporalDecayProcessor:
             
             for _, market_row in symbol_market.iterrows():
                 current_date = market_row['date']
-                sentiment_history = symbol_sentiment[sentiment_sentiment['date'] <= current_date]
+                
+                # Fixed: Use symbol_sentiment instead of sentiment_sentiment
+                sentiment_history = symbol_sentiment[symbol_sentiment['date'] <= current_date]
                 
                 result_row = market_row.to_dict()
                 
@@ -362,16 +383,27 @@ class AdvancedTemporalDecayProcessor:
         total_records = len(market_data)
         processed = 0
         
+        # Get symbols that have both market and sentiment data
+        market_symbols = set(market_data['symbol'].unique())
+        sentiment_symbols = set(sentiment_data['symbol'].unique())
+        common_symbols = list(market_symbols & sentiment_symbols)
+        missing_symbols = market_symbols - sentiment_symbols
+        
+        if missing_symbols:
+            logger.info(f"📊 Symbols without sentiment data (will use zero features): {missing_symbols}")
+        
         # Group sentiment data by symbol for efficiency
         sentiment_groups = sentiment_data.groupby('symbol')
         
         for symbol in self.symbols:
             symbol_market = market_data[market_data['symbol'] == symbol].copy()
-            symbol_sentiment = sentiment_groups.get_group(symbol) if symbol in sentiment_groups.groups else pd.DataFrame()
             
             if symbol_market.empty:
                 logger.warning(f"⚠️ No market data for {symbol}")
                 continue
+            
+            # Check if we have sentiment data for this symbol
+            symbol_sentiment = sentiment_groups.get_group(symbol) if symbol in sentiment_groups.groups else pd.DataFrame()
             
             # Sort by date for efficient processing
             symbol_market = symbol_market.sort_values('date')
@@ -503,30 +535,37 @@ class AdvancedTemporalDecayProcessor:
         validation_results = {}
         
         # Check for feature correlations
-        feature_corr = df[sentiment_features].corr()
-        high_corr_pairs = []
-        
-        for i, col1 in enumerate(sentiment_features):
-            for j, col2 in enumerate(sentiment_features[i+1:], i+1):
-                corr_val = feature_corr.loc[col1, col2]
-                if abs(corr_val) > 0.95:
-                    high_corr_pairs.append((col1, col2, corr_val))
-        
-        if high_corr_pairs:
-            logger.warning(f"⚠️ High correlation detected between features:")
-            for col1, col2, corr in high_corr_pairs[:3]:
-                logger.warning(f"   • {col1} ↔ {col2}: {corr:.3f}")
+        if len(sentiment_features) > 1:
+            try:
+                feature_corr = df[sentiment_features].corr()
+                high_corr_pairs = []
+                
+                for i, col1 in enumerate(sentiment_features):
+                    for j, col2 in enumerate(sentiment_features[i+1:], i+1):
+                        corr_val = feature_corr.loc[col1, col2]
+                        if abs(corr_val) > 0.95:
+                            high_corr_pairs.append((col1, col2, corr_val))
+                
+                if high_corr_pairs:
+                    logger.warning(f"⚠️ High correlation detected between features:")
+                    for col1, col2, corr in high_corr_pairs[:3]:
+                        logger.warning(f"   • {col1} ↔ {col2}: {corr:.3f}")
+            except Exception as e:
+                logger.warning(f"⚠️ Correlation analysis failed: {e}")
         
         # Feature distributions
         for feature in sentiment_features[:5]:  # Check first 5
-            values = df[feature].dropna()
-            if len(values) > 0:
-                validation_results[feature] = {
-                    'mean': float(values.mean()),
-                    'std': float(values.std()),
-                    'skewness': float(stats.skew(values)),
-                    'outliers': int((np.abs(stats.zscore(values)) > 3).sum())
-                }
+            try:
+                values = df[feature].dropna()
+                if len(values) > 0:
+                    validation_results[feature] = {
+                        'mean': float(values.mean()),
+                        'std': float(values.std()),
+                        'skewness': float(stats.skew(values)),
+                        'outliers': int((np.abs(stats.zscore(values)) > 3).sum())
+                    }
+            except Exception as e:
+                logger.warning(f"⚠️ Feature validation failed for {feature}: {e}")
         
         logger.info("✅ Statistical validation completed")
         

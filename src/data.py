@@ -1014,7 +1014,7 @@ if __name__ == "__main__":
     
     # Test configuration
     test_config = DatasetConfig(
-        symbols=['AAPL', 'MSFT', 'GOOGL','AMZN','NVDA', 'JPM', 'JNJ'],
+        symbols=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'NFLX'],
         start_date='2018-01-01',  # ✅ CORRECTED TO 2018
         end_date='2024-01-31',
         target_horizons=[5, 30, 90]

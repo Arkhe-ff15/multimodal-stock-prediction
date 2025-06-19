@@ -261,7 +261,7 @@ paths:
     
   # Processed data files
   processed:
-    core_dataset: 'data/processed/core_dataset.csv'
+    core_dataset: 'data/processed/combined_dataset.csv'
     fnspid_filtered_articles: 'data/processed/fnspid_filtered_articles.csv'
     fnspid_article_sentiment: 'data/processed/fnspid_article_sentiment.csv'
     fnspid_daily_sentiment: 'data/processed/fnspid_daily_sentiment.csv'
