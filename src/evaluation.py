@@ -205,6 +205,7 @@ def _simple_model_comparison(model_results):
         'best_model': best_model,
         'best_r2': best_r2
     }
+    
 # Add helper methods to ModelEvaluator class for trainer integration
 class ConfigIntegratedModelEvaluator(ModelEvaluator):
     """Extended evaluator for config-integrated models"""

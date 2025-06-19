@@ -82,7 +82,7 @@ config.yaml (Simple Configuration)
 │            STREAMLINED PIPELINE EXECUTION          │
 └─────────────────────────────────────────────────────┘
         ↓
-Stage 1: data.py → combined_dataset.csv (Core Dataset)
+Stage 1: data.py + clean.py → combined_dataset.csv (Core Dataset)
         ↓
 Stage 2: fnspid_processor.py → fnspid_daily_sentiment.csv
         ↓
