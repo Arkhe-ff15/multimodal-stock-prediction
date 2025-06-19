@@ -1,502 +1,361 @@
 #!/usr/bin/env python3
-"""
-PIPELINE ORCHESTRATOR - CONFIG-INTEGRATED CENTRAL CONTROLLER
-============================================================
+import sys
+import os
+from pathlib import Path
 
-Clean version with all methods properly in the class.
+# Add src directory to Python path so we can import config_reader
+script_dir = Path(__file__).parent
+if 'src' in str(script_dir):
+    # Running from src directory
+    sys.path.insert(0, str(script_dir))
+else:
+    # Running from project root
+    sys.path.insert(0, str(script_dir / 'src'))
+
+
+"""
+Pipeline Orchestrator - Fixed Simple Version
+============================================
+✅ FIXES APPLIED:
+- Removed complex config.py dependency
+- Simple YAML config reading
+- Simplified orchestration logic
+- Removed complex state management
+- Each stage works independently
+- Clear error handling
+
+Usage:
+    python src/pipeline_orchestrator.py
+    python src/pipeline_orchestrator.py --stages fnspid temporal_decay
 """
 
 import logging
-import json
-import os
-from pathlib import Path
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Any
-import pandas as pd
-
-# Path fix for config import
+import subprocess
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import PipelineConfig, get_default_config, validate_environment
+from datetime import datetime
+import argparse
+import warnings
+warnings.filterwarnings('ignore')
 
-# Configure logging
+# Simple imports
+from config_reader import load_config
+
+# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class ConfigIntegratedPipelineOrchestrator:
-    """
-    Central pipeline controller with proper config integration
-    """
+class SimplePipelineOrchestrator:
+    """Simple pipeline orchestrator without over-engineering"""
     
-    def __init__(self, config: PipelineConfig):
-        self.config = config
-        self.pipeline_state = {
-            'started_at': datetime.now(),
-            'current_stage': None,
-            'completed_stages': [],
-            'failed_stages': [],
-            'data_artifacts': {},
-            'model_results': {},
-            'stage_reports': {}
-        }
+    def __init__(self, config_path: str = "config.yaml"):
+        """Initialize with simple config"""
+        self.config = load_config(config_path)
+        self.start_time = datetime.now()
         
-        logger.info("🚀 Config-Integrated Pipeline Orchestrator initialized")
-        logger.info(f"   📊 Symbols: {config.symbols}")
-        logger.info(f"   📅 Date range: {config.start_date} to {config.end_date}")
-        logger.info(f"   🎯 Target horizons: {config.target_horizons}")
-        logger.info(f"   📈 FNSPID sample ratio: {config.fnspid_sample_ratio}")
-    
-    def validate_dependencies(self) -> Dict[str, bool]:
-        """Validate dependencies using config environment validation"""
-        logger.info("🔍 Validating pipeline dependencies...")
-        
-        # Use config's environment validation
-        validation = validate_environment()
-        
-        # Additional pipeline-specific validations
-        validation.update({
-            'core_dataset_exists': self.config.core_dataset_path.exists(),
-            'fnspid_data_exists': self.config.fnspid_raw_path.exists(),
-        })
-        
-        # Report validation results
-        logger.info("📋 Dependency Validation Results:")
-        for check, status in validation.items():
-            status_icon = "✅" if status else "❌"
-            logger.info(f"   {status_icon} {check}")
-        
-        return validation
-    
-    def run_stage_data_collection(self) -> bool:
-        """Run data collection stage with proper validation"""
-        self.pipeline_state['current_stage'] = 'data_collection'
-        logger.info("📊 STAGE 1: Data Collection")
-        
-        try:
-            # Check if core dataset already exists and is valid
-            if self.config.core_dataset_path.exists():
-                logger.info("📥 Validating existing core dataset...")
-                
-                try:
-                    core_data = pd.read_csv(self.config.core_dataset_path)
-                    
-                    # Validate required columns
-                    required_cols = ['stock_id', 'symbol', 'date', 'open', 'high', 'low', 'close', 'volume', 'target_5']
-                    missing_cols = [col for col in required_cols if col not in core_data.columns]
-                    
-                    if missing_cols:
-                        logger.warning(f"⚠️ Core dataset missing columns: {missing_cols}")
-                        logger.info("🔄 Re-running data collection...")
-                        return self._run_data_collection()
-                    
-                    # Validate data quality
-                    if len(core_data) < 1000:  # Minimum threshold
-                        logger.warning("⚠️ Core dataset too small, re-collecting...")
-                        return self._run_data_collection()
-                    
-                    # Validate target coverage
-                    target_coverage = core_data['target_5'].notna().mean()
-                    if target_coverage < 0.5:  # 50% minimum coverage
-                        logger.warning(f"⚠️ Low target coverage: {target_coverage:.1%}")
-                        return self._run_data_collection()
-                    
-                    self.pipeline_state['data_artifacts']['core_dataset'] = len(core_data)
-                    logger.info(f"✅ Core dataset validated: {len(core_data):,} records")
-                    logger.info(f"   📊 Symbols: {core_data['symbol'].nunique()}")
-                    logger.info(f"   🎯 Target coverage: {target_coverage:.1%}")
-                    return True
-                    
-                except Exception as e:
-                    logger.error(f"❌ Core dataset validation failed: {e}")
-                    return self._run_data_collection()
-            else:
-                logger.info("📥 Core dataset not found, needs creation")
-                return self._run_data_collection()
-                
-        except Exception as e:
-            logger.error(f"❌ Data collection stage failed: {e}")
-            self.pipeline_state['failed_stages'].append('data_collection')
-            return False
-
-    def run_stage_fnspid_processing(self) -> bool:
-        """Run FNSPID processing stage"""
-        self.pipeline_state['current_stage'] = 'fnspid_processing'
-        logger.info("📊 STAGE 2: FNSPID Processing")
-        
-        try:
-            from fnspid_processor import run_fnspid_processing_programmatic
-            
-            success, results = run_fnspid_processing_programmatic(self.config)
-            
-            if not success:
-                if results.get('fallback_available', False):
-                    logger.warning("⚠️ FNSPID processing failed, will use synthetic sentiment later")
-                    self.config.use_synthetic_sentiment = True
-                    return True  # Continue pipeline with synthetic fallback
-                else:
-                    logger.error(f"❌ FNSPID processing failed: {results.get('error', 'Unknown error')}")
-                    return False
-            
-            self.pipeline_state['data_artifacts']['fnspid_daily_sentiment'] = results['processing_summary']['daily_sentiment_records']
-            self.pipeline_state['stage_reports']['fnspid_processing'] = results
-            
-            logger.info(f"✅ FNSPID processing completed: {results['processing_summary']['daily_sentiment_records']:,} records")
-            return True
-            
-        except ImportError as e:
-            logger.error(f"❌ Could not import FNSPID processor: {e}")
-            self.pipeline_state['failed_stages'].append('fnspid_processing')
-            return False
-        except Exception as e:
-            logger.error(f"❌ FNSPID processing failed: {e}")
-            self.pipeline_state['failed_stages'].append('fnspid_processing')
-            return False
-
-    def run_stage_temporal_decay(self) -> bool:
-        """Run temporal decay processing stage"""
-        self.pipeline_state['current_stage'] = 'temporal_decay'
-        logger.info("🔬 STAGE 3: Temporal Decay Processing")
-        
-        try:
-            from temporal_decay import run_temporal_decay_processing_programmatic
-            
-            # Check if sentiment data is available
-            if not self.config.fnspid_daily_sentiment_path.exists() and not self.config.use_synthetic_sentiment:
-                logger.warning("⚠️ No sentiment data available for temporal decay")
-                self.config.use_synthetic_sentiment = True
-            
-            # Run temporal decay processing with config
-            success, results = run_temporal_decay_processing_programmatic(self.config)
-            
-            if not success:
-                logger.error(f"❌ Temporal decay processing failed: {results.get('error', 'Unknown error')}")
-                return False
-            
-            self.pipeline_state['data_artifacts']['temporal_decay_data'] = results['processing_summary']['output_records']
-            self.pipeline_state['stage_reports']['temporal_decay'] = results
-            
-            logger.info(f"✅ Temporal decay completed: {results['processing_summary']['output_records']:,} records")
-            # Safe validation score access
-            if 'validation' in results and 'overall_score' in results.get('validation', {}):
-                # Safe validation score access
-                if 'validation' in results and 'overall_score' in results.get('validation', {}):
-                    logger.info(f"   📊 Validation score: {results.get('validation', {})['overall_score']:.0f}/100")
-                else:
-                    logger.info(f"   📊 Processing completed: {results.get('records', 'N/A')} records")
-            else:
-                logger.info(f"   📊 Processing completed: {results.get('records', 'Unknown')} records")
-            return True
-            
-        except ImportError as e:
-            logger.error(f"❌ Could not import temporal decay processor: {e}")
-            self.pipeline_state['failed_stages'].append('temporal_decay')
-            return False
-        except Exception as e:
-            logger.error(f"❌ Temporal decay processing failed: {e}")
-            self.pipeline_state['failed_stages'].append('temporal_decay')
-            return False
-
-    def run_stage_sentiment_integration(self) -> bool:
-        """Run sentiment integration stage"""
-        self.pipeline_state['current_stage'] = 'sentiment_integration'
-        logger.info("🔗 STAGE 4: Sentiment Integration")
-        
-        try:
-            from sentiment import run_sentiment_integration_programmatic
-            
-            # Run sentiment integration with config
-            success, results = run_sentiment_integration_programmatic(self.config)
-            
-            if not success:
-                logger.error(f"❌ Sentiment integration failed: {results.get('error', 'Unknown error')}")
-                return False
-            
-            self.pipeline_state['data_artifacts']['enhanced_dataset'] = results['records']
-            self.pipeline_state['stage_reports']['sentiment_integration'] = results
-            
-            logger.info(f"✅ Sentiment integration completed: {results['records']:,} records")
-            logger.info(f"   📈 Coverage: {results['coverage']:.1f}%")
-            logger.info(f"   🆕 Features added: {results['features_added']}")
-            return True
-            
-        except ImportError as e:
-            logger.error(f"❌ Could not import sentiment processor: {e}")
-            self.pipeline_state['failed_stages'].append('sentiment_integration')
-            return False
-        except Exception as e:
-            logger.error(f"❌ Sentiment integration failed: {e}")
-            self.pipeline_state['failed_stages'].append('sentiment_integration')
-            return False
-
-    def run_stage_model_training(self) -> bool:
-        """Run model training stage"""
-        self.pipeline_state['current_stage'] = 'model_training'
-        logger.info("🤖 STAGE 5: Model Training")
-        
-        try:
-            # Check if enhanced dataset exists
-            if not self.config.enhanced_dataset_path.exists():
-                logger.error("❌ Enhanced dataset not found for model training")
-                return False
-            
-            logger.info("✅ Model training stage completed (placeholder)")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Model training failed: {e}")
-            self.pipeline_state['failed_stages'].append('model_training')
-            return False
-
-    def run_stage_evaluation(self) -> bool:
-        """Run evaluation stage"""
-        self.pipeline_state['current_stage'] = 'evaluation'
-        logger.info("📊 STAGE 6: Model Evaluation")
-        
-        try:
-            logger.info("✅ Model evaluation completed (placeholder)")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Model evaluation failed: {e}")
-            self.pipeline_state['failed_stages'].append('evaluation')
-            return False
-
-    def run_full_pipeline(self) -> Dict[str, Any]:
-        """Execute complete pipeline with proper error handling"""
-        logger.info("🚀 STARTING FULL CONFIG-INTEGRATED PIPELINE EXECUTION")
-        logger.info("=" * 70)
-        
-        # Validate dependencies first
-        validation = self.validate_dependencies()
-        
-        pipeline_success = True
-        continue_on_errors = self.config.skip_on_errors
-        
-        # Define pipeline stages with config control
-        stages = [
-            ('data_collection', self.run_stage_data_collection, self.config.run_data_collection),
-            ('fnspid_processing', self.run_stage_fnspid_processing, self.config.run_fnspid_processing),
-            ('temporal_decay', self.run_stage_temporal_decay, self.config.run_temporal_decay),
-            ('sentiment_integration', self.run_stage_sentiment_integration, self.config.run_sentiment_integration),
-            ('model_training', self.run_stage_model_training, self.config.run_model_training),
-            ('evaluation', self.run_stage_evaluation, self.config.run_evaluation)
-        ]
-        
-        for stage_name, stage_func, should_run in stages:
-            if should_run:
-                logger.info(f"\n📍 Executing stage: {stage_name}")
-                success = stage_func()
-                
-                if success:
-                    self.pipeline_state['completed_stages'].append(stage_name)
-                    logger.info(f"✅ Stage {stage_name} completed successfully")
-                else:
-                    pipeline_success = False
-                    self.pipeline_state['failed_stages'].append(stage_name)
-                    logger.error(f"❌ Stage {stage_name} failed")
-                    
-                    # Decide whether to continue or stop
-                    if stage_name in ['data_collection', 'fnspid_processing']:
-                        # These can potentially use fallbacks
-                        if continue_on_errors:
-                            logger.warning(f"⚠️ Continuing pipeline despite {stage_name} failure")
-                            continue
-                        else:
-                            logger.error(f"🛑 Stopping pipeline due to {stage_name} failure")
-                            break
-                    elif stage_name in ['temporal_decay', 'sentiment_integration']:
-                        # These are critical for the innovation
-                        logger.error(f"🛑 Stopping pipeline due to critical {stage_name} failure")
-                        break
-                    else:
-                        # Model training and evaluation can be skipped
-                        if continue_on_errors:
-                            logger.warning(f"⚠️ Continuing without {stage_name}")
-                            continue
-                        else:
-                            logger.error(f"🛑 Stopping pipeline due to {stage_name} failure")
-                            break
-            else:
-                logger.info(f"⏭️ Skipping stage: {stage_name}")
-        
-        # Generate final report
-        self.pipeline_state['completed_at'] = datetime.now()
-        self.pipeline_state['total_duration'] = (
-            self.pipeline_state['completed_at'] - self.pipeline_state['started_at']
-        ).total_seconds()
-        
-        self._generate_pipeline_report()
-        
-        logger.info(f"\n🎉 PIPELINE EXECUTION COMPLETED")
-        logger.info(f"   ✅ Successful stages: {len(self.pipeline_state['completed_stages'])}")
-        logger.info(f"   ❌ Failed stages: {len(self.pipeline_state['failed_stages'])}")
-        logger.info(f"   ⏱️ Total duration: {self.pipeline_state['total_duration']:.1f} seconds")
-        
-        # Show key outputs
-        if self.pipeline_state['data_artifacts']:
-            logger.info(f"\n📊 Data Artifacts Generated:")
-            for artifact, count in self.pipeline_state['data_artifacts'].items():
-                logger.info(f"   • {artifact}: {count:,} records")
-        
-        if self.pipeline_state['model_results']:
-            logger.info(f"\n🤖 Models Trained:")
-            for model_name in self.pipeline_state['model_results'].keys():
-                logger.info(f"   • {model_name}")
-        
-        return {
-            'success': pipeline_success,
-            'pipeline_state': self.pipeline_state,
-            'report_path': str(self.config.pipeline_report_path),
-            'completed_stages': self.pipeline_state['completed_stages'],
-            'failed_stages': self.pipeline_state['failed_stages'],
-            'data_artifacts': self.pipeline_state['data_artifacts']
-        }
-
-    def _run_data_collection(self) -> bool:
-        """Run actual data collection"""
-        logger.info("🔄 Running data collection...")
-        
-        try:
-            # Import and run data collection
-            import subprocess
-            import sys
-            
-            result = subprocess.run([
-                sys.executable, 'src/data.py'
-            ], capture_output=True, text=True, cwd='.')
-            
-            if result.returncode == 0:
-                logger.info("✅ Data collection completed successfully")
-                
-                # Validate the created dataset
-                if self.config.core_dataset_path.exists():
-                    core_data = pd.read_csv(self.config.core_dataset_path)
-                    self.pipeline_state['data_artifacts']['core_dataset'] = len(core_data)
-                    return True
-                else:
-                    logger.error("❌ Data collection did not create core dataset")
-                    return False
-            else:
-                logger.error(f"❌ Data collection failed: {result.stderr}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"❌ Data collection execution failed: {e}")
-            return False
-
-    def _generate_pipeline_report(self):
-        """Generate comprehensive pipeline execution report"""
-        report = {
-            'pipeline_execution': self.pipeline_state,
-            'configuration': {
-                'symbols': self.config.symbols,
-                'date_range': f"{self.config.start_date} to {self.config.end_date}",
-                'target_horizons': self.config.target_horizons,
-                'processing_parameters': {
-                    'fnspid_sample_ratio': self.config.fnspid_sample_ratio,
-                    'fnspid_chunk_size': self.config.fnspid_chunk_size,
-                    'max_epochs': self.config.max_epochs,
-                    'batch_size': self.config.batch_size,
-                    'use_synthetic_sentiment': self.config.use_synthetic_sentiment
-                },
-                'temporal_decay_params': self.config.temporal_decay_params
+        # Pipeline stages with their script paths
+        self.stages = {
+            'data': {
+                'name': 'Data Collection',
+                'script': 'src/data.py',
+                'description': 'Collect and process stock market data',
+                'required': True
             },
-            'data_artifacts': self.pipeline_state.get('data_artifacts', {}),
-            'model_results': self.pipeline_state.get('model_results', {}),
-            'stage_reports': self.pipeline_state.get('stage_reports', {}),
-            'file_paths': {
-                'core_dataset': str(self.config.core_dataset_path),
-                'enhanced_dataset': str(self.config.enhanced_dataset_path),
-                'fnspid_daily_sentiment': str(self.config.fnspid_daily_sentiment_path),
-                'temporal_decay_data': str(self.config.temporal_decay_data_path)
+            'clean': {
+                'name': 'Data Cleaning',
+                'script': 'src/clean.py',
+                'description': 'Clean and validate dataset',
+                'required': False
+            },
+            'fnspid': {
+                'name': 'FNSPID Processing',
+                'script': 'src/fnspid_processor.py',
+                'description': 'Process FNSPID news data and sentiment analysis',
+                'required': True
+            },
+            'temporal_decay': {
+                'name': 'Temporal Decay',
+                'script': 'src/temporal_decay.py',
+                'description': 'Calculate exponential temporal decay features',
+                'required': True
+            },
+            'sentiment': {
+                'name': 'Sentiment Integration',
+                'script': 'src/sentiment.py',
+                'description': 'Integrate sentiment features with market data',
+                'required': True
+            },
+            'models': {
+                'name': 'Model Training',
+                'script': 'src/models.py',
+                'description': 'Train LSTM and TFT models',
+                'required': False
+            },
+            'evaluation': {
+                'name': 'Model Evaluation',
+                'script': 'src/evaluation.py',
+                'description': 'Evaluate and compare model performance',
+                'required': False
             }
         }
         
-        # Ensure report directory exists
-        self.config.pipeline_report_path.parent.mkdir(parents=True, exist_ok=True)
+        # Track execution
+        self.completed_stages = []
+        self.failed_stages = []
         
-        with open(self.config.pipeline_report_path, 'w') as f:
-            json.dump(report, f, indent=2, default=str)
+        logger.info("🚀 Simple Pipeline Orchestrator initialized")
+        logger.info(f"   📊 Available stages: {list(self.stages.keys())}")
+    
+    def check_dependencies(self) -> dict:
+        """Check if required files exist"""
+        logger.info("🔍 Checking dependencies...")
         
-        logger.info(f"📋 Pipeline report saved: {self.config.pipeline_report_path}")
-
-def run_pipeline_with_config(config: PipelineConfig) -> Dict[str, Any]:
-    """Convenience function to run pipeline with configuration"""
-    orchestrator = ConfigIntegratedPipelineOrchestrator(config)
-    return orchestrator.run_full_pipeline()
+        dependencies = {
+            'config_yaml': Path('config.yaml').exists(),
+            'data_script': Path('src/data.py').exists(),
+            'fnspid_raw': Path(self.config['paths']['raw']['fnspid_data']).exists(),
+            'core_dataset': Path(self.config['paths']['processed']['core_dataset']).exists()
+        }
+        
+        logger.info("📋 Dependency check:")
+        for dep, status in dependencies.items():
+            status_icon = "✅" if status else "❌"
+            logger.info(f"   {status_icon} {dep}")
+        
+        return dependencies
+    
+    def run_stage(self, stage_name: str) -> bool:
+        """Run a single pipeline stage"""
+        if stage_name not in self.stages:
+            logger.error(f"❌ Unknown stage: {stage_name}")
+            return False
+        
+        stage = self.stages[stage_name]
+        script_path = Path(stage['script'])
+        
+        if not script_path.exists():
+            logger.error(f"❌ Script not found: {script_path}")
+            return False
+        
+        logger.info(f"🚀 Running stage: {stage['name']}")
+        logger.info(f"   📄 Script: {script_path}")
+        logger.info(f"   📝 Description: {stage['description']}")
+        
+        try:
+            # Run the script
+            start_time = datetime.now()
+            result = subprocess.run([
+                sys.executable, str(script_path)
+            ], capture_output=True, text=True, cwd='.')
+            
+            execution_time = (datetime.now() - start_time).total_seconds()
+            
+            if result.returncode == 0:
+                logger.info(f"✅ {stage['name']} completed successfully ({execution_time:.1f}s)")
+                if result.stdout:
+                    logger.info("📄 Output:")
+                    for line in result.stdout.strip().split('\n')[-10:]:  # Show last 10 lines
+                        logger.info(f"   {line}")
+                self.completed_stages.append(stage_name)
+                return True
+            else:
+                logger.error(f"❌ {stage['name']} failed ({execution_time:.1f}s)")
+                logger.error(f"   Error: {result.stderr}")
+                if result.stdout:
+                    logger.error(f"   Output: {result.stdout}")
+                self.failed_stages.append(stage_name)
+                return False
+        
+        except Exception as e:
+            logger.error(f"❌ {stage['name']} execution failed: {e}")
+            self.failed_stages.append(stage_name)
+            return False
+    
+    def run_stages(self, stage_names: list = None, stop_on_error: bool = True) -> bool:
+        """Run multiple pipeline stages"""
+        
+        # Default to all stages if none specified
+        if stage_names is None:
+            stage_names = list(self.stages.keys())
+        
+        logger.info(f"🚀 Running pipeline stages: {stage_names}")
+        
+        overall_success = True
+        
+        for stage_name in stage_names:
+            success = self.run_stage(stage_name)
+            
+            if not success:
+                overall_success = False
+                if stop_on_error:
+                    logger.error(f"🛑 Stopping pipeline due to {stage_name} failure")
+                    break
+                else:
+                    logger.warning(f"⚠️ Continuing despite {stage_name} failure")
+        
+        return overall_success
+    
+    def run_data_pipeline(self) -> bool:
+        """Run core data processing pipeline (data → fnspid → temporal_decay → sentiment)"""
+        logger.info("📊 Running core data processing pipeline")
+        
+        core_stages = ['data', 'fnspid', 'temporal_decay', 'sentiment']
+        return self.run_stages(core_stages, stop_on_error=True)
+    
+    def run_model_pipeline(self) -> bool:
+        """Run model training and evaluation pipeline"""
+        logger.info("🤖 Running model training pipeline")
+        
+        model_stages = ['models', 'evaluation']
+        return self.run_stages(model_stages, stop_on_error=False)
+    
+    def run_full_pipeline(self) -> bool:
+        """Run complete pipeline"""
+        logger.info("🚀 Running complete pipeline")
+        
+        # First run data processing
+        data_success = self.run_data_pipeline()
+        
+        if not data_success:
+            logger.error("❌ Data pipeline failed - stopping")
+            return False
+        
+        # Then run model training (can continue even if some fail)
+        model_success = self.run_model_pipeline()
+        
+        return data_success and model_success
+    
+    def generate_summary_report(self):
+        """Generate execution summary"""
+        total_time = (datetime.now() - self.start_time).total_seconds()
+        
+        logger.info("\n" + "="*60)
+        logger.info("📋 PIPELINE EXECUTION SUMMARY")
+        logger.info("="*60)
+        logger.info(f"🕐 Total execution time: {total_time:.1f} seconds")
+        logger.info(f"✅ Completed stages: {len(self.completed_stages)}")
+        logger.info(f"❌ Failed stages: {len(self.failed_stages)}")
+        
+        if self.completed_stages:
+            logger.info(f"\n✅ Successfully completed:")
+            for stage in self.completed_stages:
+                stage_info = self.stages[stage]
+                logger.info(f"   • {stage_info['name']}")
+        
+        if self.failed_stages:
+            logger.info(f"\n❌ Failed stages:")
+            for stage in self.failed_stages:
+                stage_info = self.stages[stage]
+                logger.info(f"   • {stage_info['name']}")
+        
+        # Check key outputs
+        logger.info(f"\n📁 Key Output Files:")
+        key_files = [
+            ('Core Dataset', self.config['paths']['processed']['core_dataset']),
+            ('Daily Sentiment', self.config['paths']['processed']['fnspid_daily_sentiment']),
+            ('Temporal Decay', self.config['paths']['processed']['temporal_decay_dataset']),
+            ('Final Dataset', self.config['paths']['processed']['final_dataset'])
+        ]
+        
+        for name, path in key_files:
+            exists = Path(path).exists()
+            status = "✅" if exists else "❌"
+            logger.info(f"   {status} {name}: {path}")
+        
+        # Model files
+        models_dir = Path("models")
+        if models_dir.exists():
+            model_files = list(models_dir.glob("*.pth"))
+            logger.info(f"\n🤖 Model Files: {len(model_files)}")
+            for model_file in model_files:
+                logger.info(f"   ✅ {model_file.name}")
+        
+        logger.info("="*60)
 
 def main():
-    """Main execution with config options"""
-    import argparse
+    """Main function with command line interface"""
+    parser = argparse.ArgumentParser(
+        description='Simple Pipeline Orchestrator',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python src/pipeline_orchestrator.py                    # Run full pipeline
+  python src/pipeline_orchestrator.py --data-only        # Data processing only
+  python src/pipeline_orchestrator.py --model-only       # Model training only
+  python src/pipeline_orchestrator.py --stages data fnspid  # Specific stages
+        """
+    )
     
-    parser = argparse.ArgumentParser(description='Config-Integrated Pipeline Orchestrator')
-    parser.add_argument('--config-type', type=str, default='default',
-                       choices=['default', 'quick_test', 'research'],
-                       help='Configuration type to use')
-    parser.add_argument('--skip-errors', action='store_true',
-                       help='Continue pipeline on non-critical errors')
     parser.add_argument('--stages', nargs='+', 
-                       choices=['data_collection', 'fnspid_processing', 'temporal_decay', 
-                               'sentiment_integration', 'model_training', 'evaluation'],
+                       choices=['data', 'clean', 'fnspid', 'temporal_decay', 'sentiment', 'models', 'evaluation'],
                        help='Specific stages to run')
+    parser.add_argument('--data-only', action='store_true',
+                       help='Run data processing pipeline only')
+    parser.add_argument('--model-only', action='store_true',
+                       help='Run model training pipeline only')
+    parser.add_argument('--continue-on-error', action='store_true',
+                       help='Continue pipeline even if stages fail')
+    parser.add_argument('--check-deps', action='store_true',
+                       help='Check dependencies and exit')
     
     args = parser.parse_args()
     
-    print("🚀 CONFIG-INTEGRATED PIPELINE ORCHESTRATOR")
-    print("=" * 60)
+    print("🚀 SIMPLE PIPELINE ORCHESTRATOR")
+    print("=" * 50)
     
     try:
-        # Load config based on type
-        from config import get_default_config, get_quick_test_config, get_research_config
+        # Initialize orchestrator
+        orchestrator = SimplePipelineOrchestrator()
         
-        if args.config_type == 'quick_test':
-            config = get_quick_test_config()
-        elif args.config_type == 'research':
-            config = get_research_config()
-        else:
-            config = get_default_config()
+        # Check dependencies
+        deps = orchestrator.check_dependencies()
         
-        # Apply command line options
-        if args.skip_errors:
-            config.skip_on_errors = True
+        if args.check_deps:
+            print("\n✅ Dependency check complete")
+            return
         
-        # Set stages to run
-        if args.stages:
-            # Disable all stages first
-            config.run_data_collection = 'data_collection' in args.stages
-            config.run_fnspid_processing = 'fnspid_processing' in args.stages
-            config.run_temporal_decay = 'temporal_decay' in args.stages
-            config.run_sentiment_integration = 'sentiment_integration' in args.stages
-            config.run_model_training = 'model_training' in args.stages
-            config.run_evaluation = 'evaluation' in args.stages
+        # Warn about missing dependencies
+        if not all(deps.values()):
+            print("\n⚠️ Some dependencies missing - pipeline may fail")
         
-        print(f"📊 Configuration: {args.config_type}")
-        print(f"🎯 Symbols: {config.symbols}")
-        print(f"📅 Date range: {config.start_date} to {config.end_date}")
-        print(f"⚠️ Skip errors: {config.skip_on_errors}")
+        # Determine execution mode
+        success = False
         
         if args.stages:
-            print(f"🎯 Stages to run: {args.stages}")
-        
-        # Run pipeline
-        result = run_pipeline_with_config(config)
-        
-        if result['success']:
-            print(f"\n🎉 Pipeline completed successfully!")
-            print(f"📋 Report: {result['report_path']}")
-            print(f"✅ Completed stages: {result['completed_stages']}")
-            
-            if result['failed_stages']:
-                print(f"❌ Failed stages: {result['failed_stages']}")
+            # Run specific stages
+            success = orchestrator.run_stages(args.stages, stop_on_error=not args.continue_on_error)
+        elif args.data_only:
+            # Data processing only
+            success = orchestrator.run_data_pipeline()
+        elif args.model_only:
+            # Model training only
+            success = orchestrator.run_model_pipeline()
         else:
-            print(f"❌ Pipeline failed")
-            print(f"❌ Failed stages: {result['failed_stages']}")
-    
+            # Full pipeline
+            success = orchestrator.run_full_pipeline()
+        
+        # Generate summary
+        orchestrator.generate_summary_report()
+        
+        if success:
+            print(f"\n🎉 Pipeline execution completed successfully!")
+        else:
+            print(f"\n❌ Pipeline execution completed with errors")
+        
+        print(f"\n🚀 Next Steps:")
+        if 'models' in orchestrator.completed_stages:
+            print("   📊 Check model performance in results/")
+        if 'evaluation' in orchestrator.completed_stages:
+            print("   🏆 Review model comparison results")
+        print("   📁 All outputs saved in data/processed/ and models/")
+        
     except Exception as e:
-        print(f"❌ Pipeline orchestrator failed: {e}")
+        print(f"\n❌ Pipeline orchestrator failed: {e}")
         import traceback
         traceback.print_exc()
+        return 1
+    
+    return 0
 
 if __name__ == "__main__":
-    main()
+    exit(main())

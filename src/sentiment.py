@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 SENTIMENT INTEGRATION - CONFIG-INTEGRATED VERSION
 =================================================
@@ -28,7 +27,21 @@ import shutil
 # ✅ FIXED: Proper config integration
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+#!/usr/bin/env python3
+import sys
+import os
+from pathlib import Path
+
+# Add src directory to Python path so we can import config_reader
+script_dir = Path(__file__).parent
+if 'src' in str(script_dir):
+    # Running from src directory
+    sys.path.insert(0, str(script_dir))
+else:
+    # Running from project root
+    sys.path.insert(0, str(script_dir / 'src'))
+
+
 from config import PipelineConfig, get_file_path
 
 # Setup logging
