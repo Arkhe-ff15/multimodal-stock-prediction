@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """
-PRODUCTION-READY SENTIMENT INTEGRATION
-=====================================
+FIXED SENTIMENT INTEGRATION - PROPER DATASET FLOW
+=================================================
 
-✅ FIXES APPLIED:
-- Consistent config_reader.py integration
-- Robust strategy fallbacks with proper error handling
-- Simplified integration logic
-- Comprehensive validation and reporting
-- Academic-quality feature engineering
-- Production-ready error handling
+FIXED ISSUES:
+- ✅ Loads temporal_decay_dataset instead of core dataset
+- ✅ Saves to final_enhanced_dataset path instead of overwriting temporal
+- ✅ Preserves temporal decay features while adding sentiment
+- ✅ Proper dataset flow: core -> temporal_decay -> sentiment_enhanced
+- ✅ Creates splits for final enhanced dataset
 
-PIPELINE: data.py → fnspid_processor.py → temporal_decay.py → sentiment.py → models.py
+PIPELINE: data.py → temporal_decay.py → sentiment.py → models.py
 """
 
 import sys
@@ -44,12 +43,14 @@ logger = logging.getLogger(__name__)
 
 class ProductionSentimentIntegrator:
     """
-    Production-ready sentiment integration with robust fallbacks
+    Fixed sentiment integration with proper dataset flow
     
     Integration Strategies (in priority order):
-    1. Temporal Decay Data (best - has optimized decay features)
-    2. FNSPID Daily Sentiment (good - basic sentiment with computed decay)
-    3. Synthetic Sentiment (fallback - always works)
+    1. FNSPID Daily Sentiment (best - real sentiment data)
+    2. Synthetic Sentiment (fallback - always works)
+    
+    Dataset Flow:
+    core_dataset -> temporal_decay_dataset -> final_enhanced_dataset
     """
     
     def __init__(self, config_path: str = "config.yaml"):
@@ -57,13 +58,17 @@ class ProductionSentimentIntegrator:
         try:
             self.config = load_config(config_path)
             self.data_paths = get_data_paths(self.config)
+            
+            # ✅ FIX: Add final enhanced dataset path
+            self.data_paths['final_enhanced_dataset'] = Path("data/processed/final_enhanced_dataset.csv")
+            
             self.symbols = self.config['data']['core']['symbols']
             self.target_horizons = self.config['data']['core']['target_horizons']
             self.start_time = datetime.now()
             
             # Integration statistics
             self.stats = {
-                'core_records': 0,
+                'temporal_records': 0,
                 'sentiment_records': 0,
                 'matched_records': 0,
                 'coverage_percentage': 0.0,
@@ -73,11 +78,11 @@ class ProductionSentimentIntegrator:
             }
             
             # Create required directories
-            for path in [self.data_paths['core_dataset'].parent, 
-                        self.data_paths['temporal_decay_dataset'].parent]:
+            for path in [self.data_paths['temporal_decay_dataset'].parent, 
+                        self.data_paths['final_enhanced_dataset'].parent]:
                 path.mkdir(parents=True, exist_ok=True)
             
-            logger.info("🔗 Production Sentiment Integrator initialized")
+            logger.info("🔗 Fixed Sentiment Integrator initialized")
             logger.info(f"   📊 Symbols: {self.symbols}")
             logger.info(f"   🎯 Target horizons: {self.target_horizons}")
             
@@ -86,54 +91,37 @@ class ProductionSentimentIntegrator:
             raise
     
     def analyze_data_availability(self) -> Dict[str, Any]:
-        """Analyze what sentiment data is available"""
+        """Analyze what data is available for sentiment integration"""
         logger.info("🔍 Analyzing data availability...")
         
         analysis = {
-            'core_dataset': {'exists': False, 'records': 0, 'symbols': []},
-            'temporal_decay_data': {'exists': False, 'records': 0, 'decay_features': []},
+            'temporal_decay_dataset': {'exists': False, 'records': 0, 'decay_features': []},
             'fnspid_daily_sentiment': {'exists': False, 'records': 0, 'symbols': []},
             'recommended_strategy': 'synthetic'
         }
         
-        # Check core dataset (required)
-        if self.data_paths['core_dataset'].exists():
-            try:
-                core_sample = pd.read_csv(self.data_paths['core_dataset'], nrows=1000)
-                analysis['core_dataset'] = {
-                    'exists': True,
-                    'records': len(core_sample),
-                    'symbols': core_sample['symbol'].unique().tolist() if 'symbol' in core_sample.columns else []
-                }
-                logger.info(f"   ✅ Core dataset: {len(core_sample):,} records (sample)")
-            except Exception as e:
-                logger.error(f"   ❌ Core dataset unreadable: {e}")
-                raise FileNotFoundError("Core dataset required but not accessible")
-        else:
-            raise FileNotFoundError(f"Core dataset not found: {self.data_paths['core_dataset']}")
-        
-        # Check temporal decay data (highest priority)
+        # ✅ FIX: Check temporal decay dataset (required input)
         if self.data_paths['temporal_decay_dataset'].exists():
             try:
                 temporal_sample = pd.read_csv(self.data_paths['temporal_decay_dataset'], nrows=1000)
                 decay_features = [col for col in temporal_sample.columns if 'sentiment_decay_' in col]
                 
-                analysis['temporal_decay_data'] = {
+                analysis['temporal_decay_dataset'] = {
                     'exists': True,
                     'records': len(temporal_sample),
                     'decay_features': decay_features,
                     'symbols': temporal_sample['symbol'].unique().tolist() if 'symbol' in temporal_sample.columns else []
                 }
-                
-                if len(decay_features) >= 3:  # Has decay features for multiple horizons
-                    analysis['recommended_strategy'] = 'temporal_decay'
-                    logger.info(f"   ✅ Temporal decay data: {len(decay_features)} decay features")
+                logger.info(f"   ✅ Temporal decay dataset: {len(temporal_sample):,} records (sample)")
                 
             except Exception as e:
-                logger.warning(f"   ⚠️ Temporal decay data unreadable: {e}")
+                logger.error(f"   ❌ Temporal decay dataset unreadable: {e}")
+                raise FileNotFoundError("Temporal decay dataset required but not accessible")
+        else:
+            raise FileNotFoundError(f"Temporal decay dataset not found: {self.data_paths['temporal_decay_dataset']}")
         
-        # Check FNSPID sentiment (fallback)
-        if analysis['recommended_strategy'] != 'temporal_decay' and self.data_paths['fnspid_daily_sentiment'].exists():
+        # Check FNSPID sentiment (preferred)
+        if self.data_paths['fnspid_daily_sentiment'].exists():
             try:
                 fnspid_sample = pd.read_csv(self.data_paths['fnspid_daily_sentiment'], nrows=1000)
                 required_cols = ['sentiment_compound', 'confidence', 'symbol', 'date']
@@ -163,9 +151,7 @@ class ProductionSentimentIntegrator:
         logger.info(f"📥 Loading sentiment data (strategy: {strategy})...")
         
         try:
-            if strategy == 'temporal_decay':
-                return self._load_temporal_decay_data()
-            elif strategy == 'fnspid_sentiment':
+            if strategy == 'fnspid_sentiment':
                 return self._load_fnspid_sentiment_data()
             elif strategy == 'synthetic':
                 return self._generate_synthetic_sentiment()
@@ -182,29 +168,8 @@ class ProductionSentimentIntegrator:
             else:
                 raise
     
-    def _load_temporal_decay_data(self) -> pd.DataFrame:
-        """Load temporal decay enhanced data (best option)"""
-        logger.info("   🔬 Loading temporal decay data...")
-        
-        data = pd.read_csv(self.data_paths['temporal_decay_dataset'])
-        
-        # Validate decay features exist
-        decay_features = [col for col in data.columns if 'sentiment_decay_' in col and 'compound' in col]
-        if len(decay_features) == 0:
-            raise ValueError("No temporal decay features found")
-        
-        # Extract sentiment columns for integration
-        sentiment_cols = [col for col in data.columns if 'sentiment' in col.lower()]
-        base_cols = ['symbol', 'date']
-        
-        result = data[base_cols + sentiment_cols].copy()
-        result['source'] = 'temporal_decay'
-        
-        logger.info(f"   ✅ Loaded {len(result):,} records with {len(sentiment_cols)} sentiment features")
-        return result
-    
     def _load_fnspid_sentiment_data(self) -> pd.DataFrame:
-        """Load FNSPID daily sentiment and compute decay features"""
+        """Load FNSPID daily sentiment data"""
         logger.info("   📊 Loading FNSPID sentiment data...")
         
         data = pd.read_csv(self.data_paths['fnspid_daily_sentiment'])
@@ -215,39 +180,38 @@ class ProductionSentimentIntegrator:
         if missing_cols:
             raise ValueError(f"FNSPID data missing columns: {missing_cols}")
         
-        # Compute simple decay features for each target horizon
+        # Create sentiment features for integration
         result = data[['symbol', 'date']].copy()
         
-        for horizon in self.target_horizons:
-            # Simple exponential decay approximation
-            decay_factor = self._get_default_decay_factor(horizon)
-            
-            result[f'sentiment_decay_{horizon}d_compound'] = (
-                data['sentiment_compound'] * (1 - decay_factor)
-            )
-            result[f'sentiment_decay_{horizon}d_positive'] = (
-                data.get('sentiment_positive', data['sentiment_compound'].clip(0, 1)) * (1 - decay_factor)
-            )
-            result[f'sentiment_decay_{horizon}d_negative'] = (
-                data.get('sentiment_negative', (-data['sentiment_compound']).clip(0, 1)) * (1 - decay_factor)
-            )
-            result[f'sentiment_decay_{horizon}d_confidence'] = data['confidence'] * (1 - decay_factor * 0.5)
-            result[f'sentiment_decay_{horizon}d_article_count'] = data.get('article_count', 1)
+        # Add core sentiment features
+        result['sentiment_compound'] = data['sentiment_compound']
+        result['sentiment_positive'] = data.get('sentiment_positive', data['sentiment_compound'].clip(0, 1))
+        result['sentiment_negative'] = data.get('sentiment_negative', (-data['sentiment_compound']).clip(0, 1))
+        result['sentiment_confidence'] = data['confidence']
+        result['article_count'] = data.get('article_count', 1)
         
-        result['source'] = 'fnspid_computed'
+        # Add momentum features
+        data_sorted = data.sort_values(['symbol', 'date'])
+        for window in [3, 7, 14]:
+            result[f'sentiment_ma_{window}d'] = (
+                data_sorted.groupby('symbol')['sentiment_compound']
+                .rolling(window, min_periods=1).mean().values
+            )
         
-        logger.info(f"   ✅ Computed decay features for {len(result):,} records")
+        result['source'] = 'fnspid_real'
+        
+        logger.info(f"   ✅ Loaded {len(result):,} FNSPID sentiment records")
         return result
     
     def _generate_synthetic_sentiment(self) -> pd.DataFrame:
-        """Generate synthetic sentiment data (always works fallback)"""
+        """Generate synthetic sentiment data as fallback"""
         logger.info("   🎲 Generating synthetic sentiment data...")
         
-        # Load core data to get date/symbol combinations
-        core_data = pd.read_csv(self.data_paths['core_dataset'])
+        # ✅ FIX: Load temporal decay data to get date/symbol combinations
+        temporal_data = pd.read_csv(self.data_paths['temporal_decay_dataset'])
         
         # Get unique symbol-date combinations
-        symbol_dates = core_data[['symbol', 'date']].drop_duplicates()
+        symbol_dates = temporal_data[['symbol', 'date']].drop_duplicates()
         
         # Set seed for reproducibility
         np.random.seed(42)
@@ -273,62 +237,49 @@ class ProductionSentimentIntegrator:
                 np.random.normal(symbol_bias + date_cycle, 0.3), -1, 1
             )
             
-            # Create record with decay features for each horizon
-            record = {'symbol': symbol, 'date': date, 'source': 'synthetic'}
+            # Create record with sentiment features
+            record = {
+                'symbol': symbol, 
+                'date': date, 
+                'source': 'synthetic',
+                'sentiment_compound': base_sentiment,
+                'sentiment_positive': max(0, base_sentiment),
+                'sentiment_negative': max(0, -base_sentiment),
+                'sentiment_confidence': np.random.beta(3, 2),
+                'article_count': max(1, int(np.random.poisson(2)))
+            }
             
-            for horizon in self.target_horizons:
-                decay_factor = self._get_default_decay_factor(horizon)
-                noise_factor = 0.2 * decay_factor  # More noise for faster decay
-                
-                sentiment_decay = np.clip(
-                    base_sentiment * (1 - decay_factor) + np.random.normal(0, noise_factor),
-                    -1, 1
-                )
-                
-                record[f'sentiment_decay_{horizon}d_compound'] = sentiment_decay
-                record[f'sentiment_decay_{horizon}d_positive'] = max(0, sentiment_decay)
-                record[f'sentiment_decay_{horizon}d_negative'] = max(0, -sentiment_decay)
-                record[f'sentiment_decay_{horizon}d_confidence'] = np.random.beta(3, 2)  # Realistic confidence distribution
-                record[f'sentiment_decay_{horizon}d_article_count'] = max(1, int(np.random.poisson(2)))
+            # Add momentum features
+            record['sentiment_ma_3d'] = base_sentiment + np.random.normal(0, 0.1)
+            record['sentiment_ma_7d'] = base_sentiment + np.random.normal(0, 0.05)
+            record['sentiment_ma_14d'] = base_sentiment + np.random.normal(0, 0.03)
             
             records.append(record)
         
         result = pd.DataFrame(records)
         logger.info(f"   ✅ Generated {len(result):,} synthetic sentiment records")
-        logger.info(f"   🎯 Features per horizon: {len(self.target_horizons)} horizons × 5 features = {len(self.target_horizons) * 5} total")
         
         return result
     
-    def _get_default_decay_factor(self, horizon: int) -> float:
-        """Get default decay factor for horizon"""
-        decay_params = {
-            5: 0.1,   # Fast decay
-            10: 0.08,
-            30: 0.05, # Medium decay
-            60: 0.03,
-            90: 0.02  # Slow decay
-        }
-        return decay_params.get(horizon, 0.05)
-    
-    def integrate_sentiment_with_core(self, sentiment_data: pd.DataFrame) -> pd.DataFrame:
-        """Integrate sentiment data with core dataset"""
-        logger.info("🔗 Integrating sentiment with core dataset...")
+    def integrate_sentiment_with_temporal(self, sentiment_data: pd.DataFrame) -> pd.DataFrame:
+        """✅ FIX: Integrate sentiment data with temporal decay dataset"""
+        logger.info("🔗 Integrating sentiment with temporal decay dataset...")
         
-        # Load core dataset
-        core_data = pd.read_csv(self.data_paths['core_dataset'])
-        self.stats['core_records'] = len(core_data)
+        # ✅ FIX: Load temporal decay dataset instead of core dataset
+        temporal_data = pd.read_csv(self.data_paths['temporal_decay_dataset'])
+        self.stats['temporal_records'] = len(temporal_data)
         self.stats['sentiment_records'] = len(sentiment_data)
         
-        # Create backup
+        # Create backup of temporal decay dataset
         backup_path = self._create_backup()
         
         # Standardize date formats for merge
-        core_data['date'] = pd.to_datetime(core_data['date']).dt.date
+        temporal_data['date'] = pd.to_datetime(temporal_data['date']).dt.date
         sentiment_data['date'] = pd.to_datetime(sentiment_data['date']).dt.date
         
         # Merge datasets
-        logger.info("   🔄 Merging datasets...")
-        enhanced_data = core_data.merge(
+        logger.info("   🔄 Merging sentiment with temporal decay data...")
+        enhanced_data = temporal_data.merge(
             sentiment_data, 
             on=['symbol', 'date'], 
             how='left'
@@ -341,7 +292,7 @@ class ProductionSentimentIntegrator:
             primary_sentiment_col = sentiment_cols[0]
             matched_mask = enhanced_data[primary_sentiment_col].notna()
             self.stats['matched_records'] = matched_mask.sum()
-            self.stats['coverage_percentage'] = (self.stats['matched_records'] / self.stats['core_records']) * 100
+            self.stats['coverage_percentage'] = (self.stats['matched_records'] / self.stats['temporal_records']) * 100
         
         # Fill missing sentiment values with appropriate defaults
         logger.info("   🔧 Filling missing sentiment values...")
@@ -352,16 +303,16 @@ class ProductionSentimentIntegrator:
                 enhanced_data[col] = enhanced_data[col].fillna(default_values.get(col, 0.0))
         
         # Add metadata columns
-        enhanced_data['sentiment_source'] = sentiment_data['source'].iloc[0] if 'source' in sentiment_data.columns else 'unknown'
-        enhanced_data['integration_timestamp'] = datetime.now().isoformat()
+        enhanced_data['sentiment_integration_source'] = sentiment_data['source'].iloc[0] if 'source' in sentiment_data.columns else 'unknown'
+        enhanced_data['sentiment_integration_timestamp'] = datetime.now().isoformat()
         
-        self.stats['features_added'] = len(enhanced_data.columns) - len(core_data.columns)
+        self.stats['features_added'] = len(enhanced_data.columns) - len(temporal_data.columns)
         
         # Convert dates back to strings for consistency
         enhanced_data['date'] = enhanced_data['date'].astype(str)
         
         logger.info("   ✅ Integration completed successfully!")
-        logger.info(f"      📊 Core records: {self.stats['core_records']:,}")
+        logger.info(f"      📊 Temporal records: {self.stats['temporal_records']:,}")
         logger.info(f"      📊 Sentiment records: {self.stats['sentiment_records']:,}")
         logger.info(f"      📈 Coverage: {self.stats['coverage_percentage']:.1f}%")
         logger.info(f"      🆕 Features added: {self.stats['features_added']}")
@@ -370,14 +321,14 @@ class ProductionSentimentIntegrator:
         return enhanced_data
     
     def _create_backup(self) -> str:
-        """Create backup of core dataset"""
+        """Create backup of temporal decay dataset"""
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_dir = self.data_paths['core_dataset'].parent.parent / "backups"
+            backup_dir = self.data_paths['temporal_decay_dataset'].parent.parent / "backups"
             backup_dir.mkdir(parents=True, exist_ok=True)
             
-            backup_path = backup_dir / f"combined_dataset_backup_{timestamp}.csv"
-            shutil.copy2(self.data_paths['core_dataset'], backup_path)
+            backup_path = backup_dir / f"temporal_decay_dataset_backup_{timestamp}.csv"
+            shutil.copy2(self.data_paths['temporal_decay_dataset'], backup_path)
             
             return str(backup_path)
         except Exception as e:
@@ -386,24 +337,107 @@ class ProductionSentimentIntegrator:
     
     def _get_default_sentiment_values(self) -> Dict[str, float]:
         """Get default values for missing sentiment features"""
-        defaults = {}
-        
-        for horizon in self.target_horizons:
-            defaults.update({
-                f'sentiment_decay_{horizon}d_compound': 0.0,
-                f'sentiment_decay_{horizon}d_positive': 0.0,
-                f'sentiment_decay_{horizon}d_negative': 0.0,
-                f'sentiment_decay_{horizon}d_confidence': 0.5,
-                f'sentiment_decay_{horizon}d_article_count': 0
-            })
-        
-        # Add any additional sentiment features
-        defaults.update({
+        defaults = {
+            'sentiment_compound': 0.0,
+            'sentiment_positive': 0.0,
+            'sentiment_negative': 0.0,
+            'sentiment_confidence': 0.5,
+            'article_count': 0,
+            'sentiment_ma_3d': 0.0,
+            'sentiment_ma_7d': 0.0,
+            'sentiment_ma_14d': 0.0,
             'source': 'none',
-            'sentiment_source': 'none'
-        })
+            'sentiment_integration_source': 'none'
+        }
         
         return defaults
+    
+    def create_enhanced_dataset_splits(self, enhanced_data: pd.DataFrame) -> None:
+        """Create splits for the final enhanced dataset"""
+        logger.info("🔪 Creating splits for enhanced dataset...")
+        
+        try:
+            # Load existing split information from temporal decay splits
+            splits_dir = Path('data/splits')
+            
+            # Check if temporal decay splits exist
+            temporal_train_path = splits_dir / "temporal_decay_enhanced_dataset_train.csv"
+            if temporal_train_path.exists():
+                logger.info("   📋 Using existing temporal decay split boundaries...")
+                
+                # Load split boundaries
+                train_split = pd.read_csv(temporal_train_path, usecols=['symbol', 'date'])
+                val_split = pd.read_csv(splits_dir / "temporal_decay_enhanced_dataset_val.csv", usecols=['symbol', 'date'])
+                test_split = pd.read_csv(splits_dir / "temporal_decay_enhanced_dataset_test.csv", usecols=['symbol', 'date'])
+                
+                # Create split column
+                enhanced_data['split'] = 'unknown'
+                
+                # Merge to assign splits
+                for split_name, split_data in [('train', train_split), ('val', val_split), ('test', test_split)]:
+                    split_data['split_temp'] = split_name
+                    enhanced_data = enhanced_data.merge(
+                        split_data[['symbol', 'date', 'split_temp']], 
+                        on=['symbol', 'date'], 
+                        how='left'
+                    )
+                    
+                    # Update split column
+                    mask = enhanced_data['split_temp'] == split_name
+                    enhanced_data.loc[mask, 'split'] = split_name
+                    enhanced_data.drop('split_temp', axis=1, inplace=True)
+                
+                # Split the data
+                train_data = enhanced_data[enhanced_data['split'] == 'train'].drop('split', axis=1)
+                val_data = enhanced_data[enhanced_data['split'] == 'val'].drop('split', axis=1)
+                test_data = enhanced_data[enhanced_data['split'] == 'test'].drop('split', axis=1)
+                
+            else:
+                logger.info("   🔪 Creating new temporal splits...")
+                # Create new splits using academic splitter
+                try:
+                    from academic_data_splitter import AcademicDataSplitter
+                    splitter = AcademicDataSplitter(train_ratio=0.7, val_ratio=0.2, test_ratio=0.1)
+                    train_data, val_data, test_data = splitter.create_temporal_splits(enhanced_data)
+                except ImportError:
+                    logger.warning("   ⚠️ AcademicDataSplitter not available, using simple date-based split")
+                    
+                    # Simple date-based split
+                    enhanced_data['date'] = pd.to_datetime(enhanced_data['date'])
+                    enhanced_data = enhanced_data.sort_values('date')
+                    
+                    unique_dates = sorted(enhanced_data['date'].unique())
+                    n_dates = len(unique_dates)
+                    
+                    train_end_idx = int(n_dates * 0.7)
+                    val_end_idx = int(n_dates * 0.9)
+                    
+                    train_end_date = unique_dates[train_end_idx - 1]
+                    val_end_date = unique_dates[val_end_idx - 1]
+                    
+                    train_data = enhanced_data[enhanced_data['date'] <= train_end_date].copy()
+                    val_data = enhanced_data[(enhanced_data['date'] > train_end_date) & 
+                                           (enhanced_data['date'] <= val_end_date)].copy()
+                    test_data = enhanced_data[enhanced_data['date'] > val_end_date].copy()
+                    
+                    # Convert dates back to strings
+                    for df in [train_data, val_data, test_data, enhanced_data]:
+                        df['date'] = df['date'].astype(str)
+            
+            # Save splits
+            splits_dir.mkdir(parents=True, exist_ok=True)
+            
+            train_data.to_csv(splits_dir / "final_enhanced_dataset_train.csv", index=False)
+            val_data.to_csv(splits_dir / "final_enhanced_dataset_val.csv", index=False)
+            test_data.to_csv(splits_dir / "final_enhanced_dataset_test.csv", index=False)
+            
+            logger.info(f"   ✅ Enhanced dataset splits created:")
+            logger.info(f"      🏃 Train: {len(train_data):,} records")
+            logger.info(f"      ✋ Val: {len(val_data):,} records")
+            logger.info(f"      🧪 Test: {len(test_data):,} records")
+            
+        except Exception as e:
+            logger.warning(f"   ⚠️ Split creation failed: {e}")
     
     def validate_integration(self, enhanced_data: pd.DataFrame) -> Dict[str, Any]:
         """Comprehensive validation of integration results"""
@@ -426,23 +460,16 @@ class ProductionSentimentIntegrator:
                 validation['issues'].append(f"Missing required base columns: {missing_base}")
                 validation['readiness_for_tft'] = False
             
-            # Check sentiment features for each horizon
-            missing_sentiment = []
-            sentiment_coverage = {}
+            # Check temporal decay features are preserved
+            decay_features = [col for col in enhanced_data.columns if 'sentiment_decay_' in col]
+            if len(decay_features) == 0:
+                validation['warnings'].append("No temporal decay features found - may have been lost in integration")
             
-            for horizon in self.target_horizons:
-                required_sentiment_col = f'sentiment_decay_{horizon}d_compound'
-                if required_sentiment_col not in enhanced_data.columns:
-                    missing_sentiment.append(required_sentiment_col)
-                else:
-                    # Calculate coverage (non-zero values)
-                    non_zero = (enhanced_data[required_sentiment_col] != 0).sum()
-                    total = len(enhanced_data)
-                    coverage_pct = (non_zero / total) * 100
-                    sentiment_coverage[f'{horizon}d'] = coverage_pct
-            
-            if missing_sentiment:
-                validation['issues'].append(f"Missing sentiment features: {missing_sentiment}")
+            # Check new sentiment features
+            sentiment_features = [col for col in enhanced_data.columns if 
+                                col.startswith('sentiment_') and 'decay' not in col]
+            if len(sentiment_features) == 0:
+                validation['issues'].append("No new sentiment features added")
                 validation['readiness_for_tft'] = False
             
             # Quality metrics
@@ -454,11 +481,10 @@ class ProductionSentimentIntegrator:
                     'end': str(enhanced_data['date'].max())
                 },
                 'target_coverage': float(enhanced_data['target_5'].notna().mean() * 100),
-                'sentiment_coverage_by_horizon': sentiment_coverage
+                'sentiment_coverage': float(enhanced_data[sentiment_features[0]].notna().mean() * 100) if sentiment_features else 0
             }
             
             # Feature analysis
-            sentiment_features = [col for col in enhanced_data.columns if 'sentiment' in col.lower()]
             technical_features = [col for col in enhanced_data.columns if any(
                 pattern in col.lower() for pattern in ['ema_', 'sma_', 'rsi_', 'macd', 'bb_', 'atr']
             )]
@@ -470,6 +496,7 @@ class ProductionSentimentIntegrator:
             validation['feature_analysis'] = {
                 'total_features': len(enhanced_data.columns),
                 'sentiment_features': len(sentiment_features),
+                'decay_features': len(decay_features),
                 'technical_features': len(technical_features),
                 'time_features': len(time_features),
                 'target_features': len(target_features)
@@ -479,12 +506,12 @@ class ProductionSentimentIntegrator:
             if enhanced_data['symbol'].nunique() < len(self.symbols) * 0.8:
                 validation['warnings'].append(f"Low symbol coverage: {enhanced_data['symbol'].nunique()}/{len(self.symbols)}")
             
-            avg_sentiment_coverage = np.mean(list(sentiment_coverage.values())) if sentiment_coverage else 0
-            if avg_sentiment_coverage < 20:
-                validation['warnings'].append(f"Low sentiment coverage: {avg_sentiment_coverage:.1f}%")
+            sentiment_coverage = validation['quality_metrics']['sentiment_coverage']
+            if sentiment_coverage < 20:
+                validation['warnings'].append(f"Low sentiment coverage: {sentiment_coverage:.1f}%")
                 validation['status'] = 'warning'
-            elif avg_sentiment_coverage < 50:
-                validation['warnings'].append(f"Moderate sentiment coverage: {avg_sentiment_coverage:.1f}%")
+            elif sentiment_coverage < 50:
+                validation['warnings'].append(f"Moderate sentiment coverage: {sentiment_coverage:.1f}%")
             
             if validation['issues']:
                 validation['status'] = 'issues_found' if validation['readiness_for_tft'] else 'not_ready'
@@ -523,7 +550,7 @@ class ProductionSentimentIntegrator:
                 'config_horizons': self.target_horizons
             },
             'data_statistics': {
-                'core_records': self.stats['core_records'],
+                'temporal_records': self.stats['temporal_records'],
                 'sentiment_records': self.stats['sentiment_records'],
                 'matched_records': self.stats['matched_records'],
                 'coverage_percentage': self.stats['coverage_percentage'],
@@ -531,8 +558,8 @@ class ProductionSentimentIntegrator:
             },
             'validation_results': validation,
             'file_paths': {
-                'core_dataset': str(self.data_paths['core_dataset']),
-                'enhanced_dataset': str(self.data_paths['temporal_decay_dataset'])  # Use as final dataset
+                'temporal_decay_dataset': str(self.data_paths['temporal_decay_dataset']),
+                'final_enhanced_dataset': str(self.data_paths['final_enhanced_dataset'])
             }
         }
         
@@ -550,7 +577,7 @@ class ProductionSentimentIntegrator:
     
     def run_complete_integration(self) -> Tuple[bool, Dict[str, Any]]:
         """Run complete sentiment integration pipeline"""
-        logger.info("🚀 STARTING PRODUCTION SENTIMENT INTEGRATION")
+        logger.info("🚀 STARTING FIXED SENTIMENT INTEGRATION")
         logger.info("=" * 60)
         
         try:
@@ -567,20 +594,23 @@ class ProductionSentimentIntegrator:
             # Step 2: Load sentiment data
             sentiment_data = self.load_sentiment_data(strategy)
             
-            # Step 3: Integrate with core dataset
-            enhanced_data = self.integrate_sentiment_with_core(sentiment_data)
+            # Step 3: ✅ FIX: Integrate with temporal decay dataset
+            enhanced_data = self.integrate_sentiment_with_temporal(sentiment_data)
             
-            # Step 4: Save enhanced dataset
-            output_path = self.data_paths['temporal_decay_dataset']  # Use as final enhanced dataset
+            # Step 4: ✅ FIX: Save to final enhanced dataset path
+            output_path = self.data_paths['final_enhanced_dataset']
             enhanced_data.to_csv(output_path, index=False)
             
-            # Step 5: Validate results
+            # Step 5: Create splits for enhanced dataset
+            self.create_enhanced_dataset_splits(enhanced_data)
+            
+            # Step 6: Validate results
             validation = self.validate_integration(enhanced_data)
             
-            # Step 6: Calculate final statistics
+            # Step 7: Calculate final statistics
             self.stats['processing_time'] = (datetime.now() - start_time).total_seconds()
             
-            # Step 7: Generate report
+            # Step 8: Generate report
             report_path = self.generate_integration_report(validation)
             
             # Success summary
@@ -600,13 +630,15 @@ class ProductionSentimentIntegrator:
                 'success': True,
                 'strategy': strategy,
                 'enhanced_dataset_path': str(output_path),
+                'temporal_dataset_preserved': str(self.data_paths['temporal_decay_dataset']),
                 'records': len(enhanced_data),
                 'coverage': self.stats['coverage_percentage'],
                 'features_added': self.stats['features_added'],
                 'processing_time': self.stats['processing_time'],
                 'validation': validation,
                 'report_path': report_path,
-                'sentiment_features': [col for col in enhanced_data.columns if 'sentiment' in col.lower()]
+                'sentiment_features': [col for col in enhanced_data.columns if 
+                                     col.startswith('sentiment_') and 'decay' not in col]
             }
             
         except Exception as e:
@@ -627,12 +659,12 @@ def main():
     """Main execution function for direct script execution"""
     import argparse
     
-    parser = argparse.ArgumentParser(description='Production Sentiment Integration')
+    parser = argparse.ArgumentParser(description='Fixed Sentiment Integration')
     parser.add_argument('--config', type=str, default='config.yaml', help='Config file path')
     parser.add_argument('--validate-only', action='store_true', help='Only validate existing dataset')
     args = parser.parse_args()
     
-    print("🔗 PRODUCTION SENTIMENT INTEGRATION")
+    print("🔗 FIXED SENTIMENT INTEGRATION")
     print("=" * 50)
     
     try:
@@ -641,8 +673,8 @@ def main():
         
         if args.validate_only:
             # Validation only mode
-            if integrator.data_paths['temporal_decay_dataset'].exists():
-                enhanced_data = pd.read_csv(integrator.data_paths['temporal_decay_dataset'])
+            if integrator.data_paths['final_enhanced_dataset'].exists():
+                enhanced_data = pd.read_csv(integrator.data_paths['final_enhanced_dataset'])
                 validation = integrator.validate_integration(enhanced_data)
                 
                 print(f"\n🔍 VALIDATION RESULTS:")
@@ -656,7 +688,7 @@ def main():
                 
                 return 0 if validation['readiness_for_tft'] else 1
             else:
-                print("❌ No enhanced dataset found to validate")
+                print("❌ No final enhanced dataset found to validate")
                 return 1
         
         # Run full integration
@@ -669,7 +701,8 @@ def main():
             print(f"📊 Coverage: {result['coverage']:.1f}%")
             print(f"🆕 Features: {result['features_added']}")
             print(f"⏱️ Time: {result['processing_time']:.1f}s")
-            print(f"📁 Output: {result['enhanced_dataset_path']}")
+            print(f"📁 Final dataset: {result['enhanced_dataset_path']}")
+            print(f"📁 Temporal preserved: {result['temporal_dataset_preserved']}")
             
             # Show next steps
             print(f"\n🚀 NEXT STEPS:")
