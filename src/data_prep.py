@@ -235,7 +235,7 @@ class ComprehensiveDataPreparator:
         return df
     
     def _handle_missing_values(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
-        """Handle missing values using configured method"""
+        """Handle missing values using configured method with proper data type conversion"""
         
         method = self.config['missing_values']['method']
         
@@ -248,32 +248,126 @@ class ComprehensiveDataPreparator:
         missing_before = df[feature_cols].isna().sum().sum()
         logger.info(f"   📊 Missing values before treatment: {missing_before}")
         
-        if missing_before > 0:
-            if method == 'knn':
-                # Use KNN imputer for features
-                knn_imputer = KNNImputer(n_neighbors=self.config['missing_values']['knn_neighbors'])
-                df[feature_cols] = knn_imputer.fit_transform(df[feature_cols])
-                
-            elif method == 'forward_fill':
-                # Forward fill by symbol (for time series)
-                if 'symbol' in df.columns:
-                    df[feature_cols] = df.groupby('symbol')[feature_cols].fillna(method='ffill')
-                    df[feature_cols] = df[feature_cols].fillna(method='bfill')
-                else:
-                    df[feature_cols] = df[feature_cols].fillna(method='ffill')
-                    
-            else:  # mean or median
-                imputer = SimpleImputer(strategy=method)
-                df[feature_cols] = imputer.fit_transform(df[feature_cols])
+        if missing_before > 0 or df[feature_cols].dtypes.apply(lambda x: x == 'object').any():
+            # STEP 1: Handle string representations of missing values and convert to numeric
+            logger.info("   🔧 Converting feature columns to numeric and handling string nulls...")
             
-            missing_after = df[feature_cols].isna().sum().sum()
-            logger.info(f"   ✅ Missing values after treatment: {missing_after}")
-            self.preprocessing_stats[dataset_type]['steps_applied'].append(f"Imputed {missing_before - missing_after} missing values using {method}")
+            # Define string representations of missing values
+            null_strings = ['none', 'None', 'NONE', 'null', 'NULL', 'na', 'NA', 'n/a', 'N/A', 
+                            'nan', 'NaN', 'NAN', '', ' ', 'missing', 'MISSING']
+            
+            for col in feature_cols:
+                try:
+                    # First, replace string representations of null with actual NaN
+                    if df[col].dtype == 'object':
+                        df[col] = df[col].replace(null_strings, np.nan)
+                    
+                    # Convert to numeric, forcing errors to NaN
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                    
+                except Exception as e:
+                    logger.warning(f"   ⚠️ Could not convert column {col} to numeric: {e}")
+                    # If conversion fails, drop the column
+                    if col in feature_cols:
+                        feature_cols.remove(col)
+                        logger.warning(f"   🗑️ Dropping problematic column: {col}")
+            
+            # STEP 2: Check for infinite values and replace with NaN
+            logger.info("   🔧 Handling infinite values...")
+            for col in feature_cols:
+                if col in df.columns:
+                    inf_mask = np.isinf(df[col])
+                    if inf_mask.any():
+                        df[col] = df[col].replace([np.inf, -np.inf], np.nan)
+                        logger.info(f"   ♾️ Replaced {inf_mask.sum()} infinite values in {col}")
+            
+            # STEP 3: Recount missing values after cleanup
+            missing_after_cleanup = df[feature_cols].isna().sum().sum()
+            logger.info(f"   📊 Missing values after cleanup: {missing_after_cleanup}")
+            
+            # STEP 4: Apply imputation method
+            if missing_after_cleanup > 0:
+                # Ensure we only work with columns that have numeric data
+                numeric_feature_cols = []
+                for col in feature_cols:
+                    if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
+                        numeric_feature_cols.append(col)
+                
+                if not numeric_feature_cols:
+                    logger.warning("   ⚠️ No numeric feature columns found for imputation")
+                    return df
+                
+                logger.info(f"   🔧 Applying {method} imputation to {len(numeric_feature_cols)} numeric columns...")
+                
+                if method == 'knn':
+                    # Use KNN imputer for features
+                    try:
+                        knn_imputer = KNNImputer(n_neighbors=self.config['missing_values']['knn_neighbors'])
+                        
+                        # Create a copy of the numeric data for imputation
+                        numeric_data = df[numeric_feature_cols].copy()
+                        
+                        # Apply imputation
+                        imputed_data = knn_imputer.fit_transform(numeric_data)
+                        
+                        # Put the imputed data back
+                        df[numeric_feature_cols] = imputed_data
+                        
+                    except Exception as e:
+                        logger.error(f"   ❌ KNN imputation failed: {e}")
+                        logger.info("   🔄 Falling back to median imputation...")
+                        
+                        # Fallback to median imputation
+                        for col in numeric_feature_cols:
+                            if df[col].isna().any():
+                                median_value = df[col].median()
+                                df[col].fillna(median_value, inplace=True)
+                    
+                elif method == 'forward_fill':
+                    # Forward fill by symbol (for time series)
+                    if 'symbol' in df.columns:
+                        df[numeric_feature_cols] = df.groupby('symbol')[numeric_feature_cols].fillna(method='ffill')
+                        df[numeric_feature_cols] = df[numeric_feature_cols].fillna(method='bfill')
+                    else:
+                        df[numeric_feature_cols] = df[numeric_feature_cols].fillna(method='ffill')
+                        df[numeric_feature_cols] = df[numeric_feature_cols].fillna(method='bfill')
+                        
+                else:  # mean or median
+                    try:
+                        imputer = SimpleImputer(strategy=method)
+                        df[numeric_feature_cols] = imputer.fit_transform(df[numeric_feature_cols])
+                    except Exception as e:
+                        logger.error(f"   ❌ {method} imputation failed: {e}")
+                        logger.info("   🔄 Falling back to manual median imputation...")
+                        
+                        # Manual fallback
+                        for col in numeric_feature_cols:
+                            if df[col].isna().any():
+                                fill_value = df[col].median() if method == 'median' else df[col].mean()
+                                df[col].fillna(fill_value, inplace=True)
+                
+                # STEP 5: Final validation and cleanup
+                remaining_missing = df[numeric_feature_cols].isna().sum().sum()
+                logger.info(f"   ✅ Missing values after treatment: {remaining_missing}")
+                
+                # If there are still missing values, fill with 0
+                if remaining_missing > 0:
+                    logger.info(f"   🔧 Filling remaining {remaining_missing} missing values with 0...")
+                    df[numeric_feature_cols] = df[numeric_feature_cols].fillna(0)
+                
+                # Track improvement
+                improvement = missing_before - remaining_missing
+                self.preprocessing_stats[dataset_type]['steps_applied'].append(
+                    f"Imputed {improvement} missing values using {method} (with data type conversion)"
+                )
+            
+            else:
+                logger.info("   ✅ No missing values found after data type conversion")
         
         return df
     
     def _fix_correlations(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
-        """Fix high correlation issues between features"""
+        """Fix high correlation issues between features while preserving sentiment features"""
         
         # Find numeric columns excluding identifiers and targets
         identifier_cols = [col for col in self.config['identifier_columns'] if col in df.columns]
@@ -285,49 +379,128 @@ class ComprehensiveDataPreparator:
             logger.info("   ✅ Insufficient features for correlation analysis")
             return df
         
+        # CRITICAL FIX: Separate sentiment features from technical features
+        sentiment_features = [col for col in feature_cols if any(
+            pattern in col.lower() for pattern in [
+                'sentiment_decay_', 'sentiment_compound', 'sentiment_positive', 
+                'sentiment_negative', 'sentiment_confidence', 'sentiment_ma_',
+                'confidence_mean', 'confidence_std', 'high_confidence_ratio',
+                'sentiment_volatility_', 'sentiment_momentum_'
+            ]
+        )]
+        
+        technical_features = [col for col in feature_cols if col not in sentiment_features]
+        
+        logger.info(f"   📊 Feature analysis: {len(technical_features)} technical, {len(sentiment_features)} sentiment")
+        
         # Calculate correlation matrix
         corr_matrix = df[feature_cols].corr().abs()
         
+        # Different thresholds for different feature types
+        technical_threshold = self.config['correlation_threshold']  # 0.95
+        sentiment_threshold = 0.98  # Higher threshold for sentiment features (preserve them)
+        
         # Find highly correlated pairs
-        threshold = self.config['correlation_threshold']
         high_corr_pairs = []
         
         for i, col1 in enumerate(feature_cols):
             for j, col2 in enumerate(feature_cols[i+1:], i+1):
                 corr_value = corr_matrix.loc[col1, col2]
+                
+                # Determine threshold based on feature types
+                if col1 in sentiment_features and col2 in sentiment_features:
+                    threshold = sentiment_threshold  # More lenient for sentiment-sentiment pairs
+                elif col1 in sentiment_features or col2 in sentiment_features:
+                    threshold = 0.97  # Moderate for sentiment-technical pairs
+                else:
+                    threshold = technical_threshold  # Strict for technical-technical pairs
+                
                 if corr_value > threshold:
-                    high_corr_pairs.append((col1, col2, corr_value))
+                    high_corr_pairs.append((col1, col2, corr_value, threshold))
         
         if high_corr_pairs:
-            logger.info(f"   ⚠️ Found {len(high_corr_pairs)} high correlation pairs (>{threshold})")
+            logger.info(f"   ⚠️ Found {len(high_corr_pairs)} high correlation pairs")
             
-            # Strategy: Remove features with lower target correlation
+            # Strategy: Remove features with lower target correlation, but protect sentiment features
             target_col = 'target_5' if 'target_5' in df.columns else target_cols[0] if target_cols else None
             features_to_remove = set()
             
             if target_col:
                 target_corr = df[feature_cols + [target_col]].corr()[target_col].abs()
                 
-                for col1, col2, corr_val in high_corr_pairs:
-                    # Keep the feature with higher target correlation
-                    if target_corr[col1] >= target_corr[col2]:
-                        features_to_remove.add(col2)
-                        logger.info(f"   🗑️ Removing {col2} (target_corr: {target_corr[col2]:.3f} < {target_corr[col1]:.3f})")
+                for col1, col2, corr_val, threshold_used in high_corr_pairs:
+                    # PROTECTION LOGIC: Prioritize keeping sentiment features
+                    col1_is_sentiment = col1 in sentiment_features
+                    col2_is_sentiment = col2 in sentiment_features
+                    
+                    if col1_is_sentiment and col2_is_sentiment:
+                        # Both are sentiment features - keep the one with higher target correlation
+                        if target_corr[col1] >= target_corr[col2]:
+                            features_to_remove.add(col2)
+                            logger.info(f"   🗑️ Removing sentiment {col2} (target_corr: {target_corr[col2]:.3f} < {target_corr[col1]:.3f})")
+                        else:
+                            features_to_remove.add(col1)
+                            logger.info(f"   🗑️ Removing sentiment {col1} (target_corr: {target_corr[col1]:.3f} < {target_corr[col2]:.3f})")
+                    
+                    elif col1_is_sentiment and not col2_is_sentiment:
+                        # col1 is sentiment, col2 is technical - prefer keeping sentiment unless much worse
+                        if target_corr[col2] > target_corr[col1] + 0.02:  # 2% buffer for sentiment
+                            features_to_remove.add(col1)
+                            logger.info(f"   🗑️ Removing sentiment {col1} (much lower target_corr: {target_corr[col1]:.3f} vs {target_corr[col2]:.3f})")
+                        else:
+                            features_to_remove.add(col2)
+                            logger.info(f"   🗑️ Removing technical {col2} (protecting sentiment)")
+                    
+                    elif not col1_is_sentiment and col2_is_sentiment:
+                        # col2 is sentiment, col1 is technical - prefer keeping sentiment unless much worse
+                        if target_corr[col1] > target_corr[col2] + 0.02:  # 2% buffer for sentiment
+                            features_to_remove.add(col2)
+                            logger.info(f"   🗑️ Removing sentiment {col2} (much lower target_corr: {target_corr[col2]:.3f} vs {target_corr[col1]:.3f})")
+                        else:
+                            features_to_remove.add(col1)
+                            logger.info(f"   🗑️ Removing technical {col1} (protecting sentiment)")
+                    
                     else:
-                        features_to_remove.add(col1)
-                        logger.info(f"   🗑️ Removing {col1} (target_corr: {target_corr[col1]:.3f} < {target_corr[col2]:.3f})")
-            else:
-                # Fallback: remove the second feature in each pair
-                for col1, col2, corr_val in high_corr_pairs:
-                    features_to_remove.add(col2)
-                    logger.info(f"   🗑️ Removing {col2} (correlation: {corr_val:.3f})")
+                        # Both are technical features - use standard logic
+                        if target_corr[col1] >= target_corr[col2]:
+                            features_to_remove.add(col2)
+                            logger.info(f"   🗑️ Removing technical {col2} (target_corr: {target_corr[col2]:.3f} < {target_corr[col1]:.3f})")
+                        else:
+                            features_to_remove.add(col1)
+                            logger.info(f"   🗑️ Removing technical {col1} (target_corr: {target_corr[col1]:.3f} < {target_corr[col2]:.3f})")
             
+            else:
+                # Fallback: remove the second feature in each pair, but still protect sentiment
+                for col1, col2, corr_val, threshold_used in high_corr_pairs:
+                    if col1 in sentiment_features and col2 not in sentiment_features:
+                        features_to_remove.add(col2)  # Remove technical, keep sentiment
+                        logger.info(f"   🗑️ Removing technical {col2} (protecting sentiment)")
+                    elif col2 in sentiment_features and col1 not in sentiment_features:
+                        features_to_remove.add(col1)  # Remove technical, keep sentiment
+                        logger.info(f"   🗑️ Removing technical {col1} (protecting sentiment)")
+                    else:
+                        features_to_remove.add(col2)  # Default behavior
+                        logger.info(f"   🗑️ Removing {col2} (correlation: {corr_val:.3f})")
+            
+            # Apply removals
             if features_to_remove:
+                sentiment_removed = len([f for f in features_to_remove if f in sentiment_features])
+                technical_removed = len([f for f in features_to_remove if f in technical_features])
+                
                 df = df.drop(columns=list(features_to_remove))
                 logger.info(f"   ✅ Removed {len(features_to_remove)} highly correlated features")
-                self.preprocessing_stats[dataset_type]['steps_applied'].append(f"Removed {len(features_to_remove)} correlated features")
+                logger.info(f"       📊 Technical removed: {technical_removed}")
+                logger.info(f"       🎭 Sentiment removed: {sentiment_removed}")
+                
+                # Warning if too many sentiment features removed
+                if sentiment_removed > len(sentiment_features) * 0.3:
+                    logger.warning(f"   ⚠️ HIGH SENTIMENT LOSS: {sentiment_removed}/{len(sentiment_features)} sentiment features removed!")
+                
+                self.preprocessing_stats[dataset_type]['steps_applied'].append(
+                    f"Removed {len(features_to_remove)} correlated features (protected sentiment)"
+                )
         else:
-            logger.info(f"   ✅ No high correlations found (threshold: {threshold})")
+            logger.info(f"   ✅ No high correlations found")
         
         return df
     
