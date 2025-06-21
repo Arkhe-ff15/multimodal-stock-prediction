@@ -584,10 +584,10 @@ class TechnicalIndicatorProcessor:
             data[f'volume_sma_{vol_period}'] = symbol_groups['volume'].transform(
                 lambda x: x.rolling(window=vol_period).mean()
             )
-            data['volume_ratio'] = data['volume'] / (data[f'volume_sma_{vol_period}'] + 1e-10)
+            data['volume_ratio'] = data['volume'] / (data[f'volume_sma_{vol_period}'] + 0.0000000001)
             data['volume_trend'] = (
                 symbol_groups['volume'].transform(lambda x: x.rolling(window=5).mean()) / 
-                (symbol_groups['volume'].transform(lambda x: x.rolling(window=vol_period).mean()) + 1e-10)
+                (symbol_groups['volume'].transform(lambda x: x.rolling(window=vol_period).mean()) + 0.0000000001)
             )
             
             # 12. PRICE POSITION & ADDITIONAL FEATURES
@@ -597,10 +597,10 @@ class TechnicalIndicatorProcessor:
             
             # Enhanced gap calculation
             data['gap'] = data.groupby('symbol').apply(
-                lambda x: (x['open'] - x['close'].shift(1)) / (x['close'].shift(1) + 1e-10)
+                lambda x: (x['open'] - x['close'].shift(1)) / (x['close'].shift(1) + 0.0000000001)
             ).reset_index(level=0, drop=True)
             
-            data['intraday_return'] = (data['close'] - data['open']) / (data['open'] + 1e-10)
+            data['intraday_return'] = (data['close'] - data['open']) / (data['open'] + 0.0000000001)
             
             # 13. LAG FEATURES
             logger.info("   📊 Lag features...")

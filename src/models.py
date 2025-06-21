@@ -544,7 +544,7 @@ class EnhancedLSTMDataset(Dataset):
                     # Enhanced quality checks
                     if (np.isfinite(target_value) and 
                         np.all(np.isfinite(sequence)) and
-                        np.var(sequence) > 1e-8):  # Avoid constant sequences
+                        np.var(sequence) > 0.00000001):  # Avoid constant sequences
                         
                         self.sequences.append(sequence)
                         self.targets.append(target_value)
@@ -672,8 +672,8 @@ class EnhancedLSTMTrainer(pl.LightningModule):
     Enhanced PyTorch Lightning trainer with comprehensive monitoring
     """
     
-    def __init__(self, model: EnhancedLSTMModel, learning_rate: float = 1e-3, 
-                 weight_decay: float = 1e-4, model_name: str = "LSTM"):
+    def __init__(self, model: EnhancedLSTMModel, learning_rate: float = 0.001, 
+                 weight_decay: float = 0.0001, model_name: str = "LSTM"):
         super().__init__()
         self.save_hyperparameters(ignore=['model'])
         
@@ -798,7 +798,7 @@ class EnhancedLSTMTrainer(pl.LightningModule):
             mode='min',
             factor=0.7,
             patience=10,
-            min_lr=1e-6,
+            min_lr=0.000001,
             verbose=True
         )
         
@@ -1115,7 +1115,7 @@ class EnhancedTFTModel:
             raise ModelTrainingError(f"Enhanced TFT dataset preparation failed: {e}")
     
     def train(self, max_epochs: int = 100, batch_size: int = 32, 
-              learning_rate: float = 1e-3, save_dir: str = "models/checkpoints") -> Dict[str, Any]:
+              learning_rate: float = 0.001, save_dir: str = "models/checkpoints") -> Dict[str, Any]:
         """Enhanced TFT training with comprehensive monitoring"""
         logger.info(f"🚀 Training Enhanced TFT Model ({self.model_type})...")
         
@@ -1168,7 +1168,7 @@ class EnhancedTFTModel:
                     log_interval=50,
                     reduce_on_plateau_patience=15,
                     optimizer='AdamW',
-                    optimizer_params={'weight_decay': 1e-4}
+                    optimizer_params={'weight_decay': 0.0001}
                 )
                 
                 logger.info(f"   ✅ TFT model created successfully")
@@ -1183,7 +1183,7 @@ class EnhancedTFTModel:
             
             early_stop = EarlyStopping(
                 monitor="val_loss",
-                min_delta=1e-4,
+                min_delta=0.0001,
                 patience=20,
                 mode="min",
                 verbose=True
@@ -1509,7 +1509,7 @@ class EnhancedModelFramework:
             # Enhanced Lightning trainer setup
             try:
                 lstm_trainer = EnhancedLSTMTrainer(
-                    model, learning_rate=1e-3, weight_decay=1e-4, model_name="LSTM_Baseline"
+                    model, learning_rate=0.001, weight_decay=0.0001, model_name="LSTM_Baseline"
                 )
                 
                 # Enhanced callbacks
@@ -1618,7 +1618,7 @@ class EnhancedModelFramework:
             results = tft.train(
                 max_epochs=100, 
                 batch_size=32, 
-                learning_rate=1e-3, 
+                learning_rate=0.001, 
                 save_dir=str(self.models_dir)
             )
             
@@ -1674,7 +1674,7 @@ class EnhancedModelFramework:
             results = tft.train(
                 max_epochs=100, 
                 batch_size=32, 
-                learning_rate=1e-3, 
+                learning_rate=0.001, 
                 save_dir=str(self.models_dir)
             )
             
