@@ -1,250 +1,753 @@
 # ===================================================================
-# COMPREHENSIVE SENTIMENT-TFT PIPELINE CONFIGURATION
-# Single source of truth for data, model, training, and evaluation
+# COMPREHENSIVE ACADEMIC SENTIMENT-TFT RESEARCH CONFIGURATION
+# Production-only, academically rigorous configuration
+# Covers all pipeline components with research-grade standards
 # ===================================================================
 
 # =================
-# PIPELINE CONTROL
+# RESEARCH DESIGN & PIPELINE CONTROL
 # =================
+research:
+  # Study metadata
+  metadata:
+    title: "Sentiment-Enhanced Temporal Fusion Transformer for Financial Forecasting"
+    version: "1.0.0"
+    authors: ["Research Team"]
+    institution: "Academic Institution"
+    
+  # Research questions
+  objectives:
+    primary: "Does news sentiment improve financial forecasting accuracy in TFT models?"
+    secondary:
+      - "Which sentiment features are most predictive?"
+      - "How does sentiment value vary across market regimes?"
+      - "What is the economic significance of sentiment-enhanced predictions?"
+    
+  # Study parameters (6+ years for robust analysis)
+  study_period:
+    start_date: '2018-01-01'
+    end_date: '2024-01-31'
+    validation_cutoff: '2022-04-01'  # 70% train, 20% val, 10% test
+    test_cutoff: '2023-06-22'
+    
+  # Asset universe (diversified for generalizability)
+  assets:
+    symbols: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'NFLX']
+    sectors: ['Technology', 'Consumer Discretionary']
+    market_cap: 'Large Cap'
+    
+  # Forecasting horizons (academically standard)
+  forecasting:
+    horizons: [1, 5, 10, 22, 44]  # 1D, 1W, 2W, 1M, 2M
+    primary_horizon: 22  # 1-month focus
+
+# Pipeline execution control
 pipeline:
-  # Which stages to run (set to false to skip)
+  # All stages enabled for production (no dev shortcuts)
   stages:
     data_processing: true
-    fnspid_processing: true 
+    fnspid_processing: true
     temporal_decay: true
     sentiment_analysis: true
     feature_engineering: true
     model_training: true
     model_evaluation: true
     model_inference: true
+    statistical_analysis: true  # Added for academic rigor
+    robustness_testing: true   # Added for academic rigor
   
-  # Pipeline execution settings
+  # Execution settings (production-grade)
   execution:
     parallel_processing: true
-    max_workers: 4
-    memory_limit_gb: 16
+    max_workers: 6  # Increased from 4
+    memory_limit_gb: 24  # Increased from 16
     checkpoint_enabled: true
     resume_from_checkpoint: true
+    data_validation: true  # Added for academic rigor
+    reproducibility_checks: true  # Added for academic rigor
 
 # ===============
-# DATA SETTINGS
+# DATA COLLECTION & PROCESSING
 # ===============
 data:
-  # Core dataset configuration (data.py)
+  # Core financial data
   core:
     symbols: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'NFLX']
     start_date: '2018-01-01'
     end_date: '2024-01-31'
-    target_horizons: [5, 10, 30, 60, 90]
+    target_horizons: [1, 5, 10, 22, 44]  # Academic standard
     
     # Data sources
     yahoo_finance:
       enabled: true
       features: ['Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
+      quality_checks: true
+      missing_data_threshold: 0.05  # Max 5% missing data
       
     alpha_vantage:
-      enabled: false
-      api_key: null  # Set your API key here
+      enabled: false  # Backup data source
+      api_key: null
       
-  # FNSPID processing configuration (fnspid_processor.py)
+  # FNSPID news data (PRODUCTION ONLY - academically rigorous)
   fnspid:
-    # Production settings
+    # Production settings (academic grade - NO development mode)
     production:
-      sample_ratio: 0.15  # 15% of 22GB dataset for production
-      chunk_size: 75000
-      max_articles_per_day: 100
-      min_article_length: 50
-      max_article_length: 2000
+      sample_ratio: 0.30  # 30% of 22GB (~6.6GB) for robust analysis
+      chunk_size: 100000  # Larger chunks for efficiency
+      max_articles_per_day: 75  # Prevent single-day noise
+      min_article_length: 100  # Substantial content only
+      max_article_length: 3000  # Remove extremely long articles
+      min_confidence_score: 0.70  # High confidence only
       
-    # Development/testing settings  
-    development:
-      sample_ratio: 0.03  # 3% for quick testing
-      chunk_size: 10000
-      max_articles_per_day: 20
-      symbols_subset: ['AAPL', 'MSFT']
-      date_range: ['2023-01-01', '2023-06-30']
+    # Quality filters (academic standards)
+    quality_filters:
+      min_articles_per_symbol_day: 3  # Minimum for reliable sentiment
+      max_articles_per_symbol_day: 75  # Prevent single-day noise
+      language_filter: 'english'
+      remove_duplicates: true
+      filter_weekends: true
       
-    # Processing parameters
+    # Coverage requirements
+    coverage:
+      min_trading_days_per_symbol: 150  # Minimum days with sentiment
+      max_consecutive_missing_days: 7   # Maximum gap tolerance
+      min_total_articles_per_symbol: 500  # Minimum total articles
+      
+    # Processing parameters (maintained for compatibility)
     processing:
       remove_duplicates: true
       filter_weekends: true
-      min_confidence_score: 0.6
+      min_confidence_score: 0.70  # Moved from quality_filters for compatibility
       language_filter: 'english'
       
-  # Temporal decay configuration (temporal_decay.py)
+  # Temporal decay configuration (academic enhancement)
   temporal_decay:
-    # Decay function parameters
-    decay_function: 'exponential'  # Options: exponential, linear, gaussian
-    decay_rate: 0.1
-    max_decay_days: 30
+    # Decay function (based on behavioral finance literature)
+    decay_function: 'exponential'  # Most supported in literature
+    decay_rate: 0.15  # Optimized for daily data
+    max_decay_days: 22  # 1-month decay window
     
-    # Feature engineering
+    # Advanced features
     features:
       sentiment_momentum: true
       sentiment_volatility: true
       sentiment_trend: true
-      rolling_windows: [3, 7, 14, 30]
+      sentiment_persistence: true  # Added
+      sentiment_mean_reversion: true  # Added
+      rolling_windows: [3, 7, 14, 22, 44]  # Extended windows
       
-    # Memory optimization
+    # Processing optimization
     batch_processing: true
-    batch_size: 10000
+    batch_size: 15000  # Increased from 10000
+    memory_optimization: true
 
 # =================
-# SENTIMENT ANALYSIS
+# SENTIMENT ANALYSIS (ACADEMIC GRADE)
 # =================
 sentiment:
-  # Model configuration (sentiment.py)
+  # Primary model: FinBERT (state-of-the-art for finance)
   models:
     finbert:
       model_name: 'ProsusAI/finbert'
       enabled: true
-      batch_size: 16
+      batch_size: 32  # Increased from 16
       max_length: 512
-      device: 'cpu'  # Options: cpu, cuda, mps
+      device: 'auto'  # Auto-detect best device
+      confidence_threshold: 0.70
       
+      # Academic rigor settings
+      validation:
+        cross_validate_samples: true
+        sample_size: 1000
+        benchmark_against_human: false  # Set true if human labels available
+        
+    # Backup models for robustness
     vader:
-      enabled: false  # Backup sentiment analyzer
+      enabled: true  # Enable for comparison
+      as_baseline: true
       
+    # Custom model (if available)
     custom_bert:
       enabled: false
       model_path: null
+      fine_tuned_on_financial: false
       
-  # Processing settings
+  # Processing settings (academic standards)
   processing:
-    aggregate_daily: true
-    weight_by_confidence: true
-    normalize_scores: true
-    handle_missing: 'interpolate'  # Options: drop, interpolate, forward_fill
+    # Aggregation methods
+    aggregation:
+      daily_aggregation: true
+      weight_by_confidence: true
+      weight_by_article_length: true  # Added
+      remove_outliers: true  # Added (>3 std devs)
+      
+    # Normalization and scaling
+    normalization:
+      normalize_scores: true
+      standardize_by_symbol: true  # Added
+      standardize_by_time: true    # Added
+      
+    # Missing data handling
+    missing_data:
+      strategy: 'interpolate'  # Primary strategy
+      max_interpolation_days: 3
+      fallback_strategy: 'forward_fill'
+      
+    # Quality assurance
+    quality_assurance:
+      sentiment_stability_check: true
+      outlier_detection: true
+      consistency_validation: true
 
 # ================
-# MODEL SETTINGS
+# FEATURE ENGINEERING (COMPREHENSIVE)
+# ================
+features:
+  # Price-based features (academic standard)
+  price_features:
+    returns:
+      simple_returns: true
+      log_returns: true
+      standardized_returns: true
+      overnight_returns: true  # Added
+      
+    volatility:
+      realized_volatility: [5, 10, 22, 44, 66]  # Multiple windows
+      garch_volatility: false  # Too complex for TFT
+      parkinson_volatility: true  # Added (high-low based)
+      
+    momentum:
+      price_momentum: [5, 10, 22, 44, 66, 132]  # 1W to 6M
+      relative_strength: [10, 22, 44]
+      
+  # Technical indicators (most predictive for academic research)
+  technical:
+    trend_indicators:
+      sma: [5, 10, 22, 44, 66]  # Simple moving averages
+      ema: [12, 26, 50]         # Exponential moving averages
+      macd: true
+      macd_signal: true
+      macd_histogram: true
+      
+    mean_reversion:
+      rsi: [14, 21]  # Multiple RSI periods
+      bollinger_bands: true
+      bollinger_width: true
+      bollinger_position: true
+      stochastic: true  # Added
+      williams_r: true  # Added
+      
+    volume_indicators:
+      volume_sma: [5, 10, 22]
+      volume_ratio: true
+      on_balance_volume: true  # Added
+      accumulation_distribution: true  # Added
+      
+    volatility_indicators:
+      average_true_range: [14, 22]
+      volatility_ratio: true
+      
+  # Sentiment features (NOVEL ACADEMIC CONTRIBUTION)
+  sentiment_features:
+    # Raw sentiment scores
+    raw_sentiment:
+      daily_mean: true
+      daily_median: true  # Added (robust to outliers)
+      daily_std: true
+      daily_skewness: true  # Added
+      daily_count: true
+      daily_range: true  # Added
+      
+    # Temporal sentiment features
+    temporal_sentiment:
+      momentum: [3, 7, 14, 22]  # Sentiment momentum
+      persistence: [5, 10, 22, 44]  # Sentiment persistence
+      mean_reversion: [10, 22]  # Sentiment mean reversion
+      autocorrelation: [5, 10]  # Sentiment autocorrelation
+      
+    # Cross-sectional sentiment
+    cross_sectional:
+      relative_sentiment: true  # Relative to market
+      sector_sentiment: true    # Sector average sentiment
+      market_sentiment: true    # Market-wide sentiment
+      sentiment_divergence: true  # Price-sentiment divergence
+      sentiment_consensus: true  # Agreement among articles
+      
+    # Advanced sentiment features
+    advanced_sentiment:
+      sentiment_surprise: true    # Unexpected sentiment changes
+      sentiment_momentum_divergence: true  # Momentum vs price momentum
+      sentiment_volatility_ratio: true    # Sentiment vol / price vol
+      
+  # Market microstructure (where available)
+  microstructure:
+    turnover: true
+    dollar_volume: true
+    market_impact: true
+    
+  # Macroeconomic features
+  macro_features:
+    market_indicators:
+      vix: true  # Volatility index
+      term_spread: true  # 10Y-2Y treasury spread
+      credit_spread: true  # Investment grade credit spread
+      dollar_index: true  # DXY index
+      
+    sentiment_indicators:
+      market_sentiment: true  # Aggregated market sentiment
+      fear_greed_index: false  # If available
+      
+  # Calendar effects (academic standard)
+  calendar:
+    time_features:
+      day_of_week: true
+      month: true
+      quarter: true
+      day_of_month: true  # Added
+      
+    event_features:
+      holidays: true
+      earnings_season: true
+      fomc_meetings: true
+      option_expiration: true  # Added
+      quarter_end: true
+      year_end: true  # Added
+      
+  # Cross-asset features
+  cross_asset:
+    correlation_features: true
+    relative_performance: true
+    sector_rotation: true
+
+# ================
+# MODEL ARCHITECTURE (RESEARCH-GRADE)
 # ================
 model:
-  # TFT Architecture
+  # Primary: Temporal Fusion Transformer (Lim et al. 2021 + enhancements)
   tft:
-    # Model architecture
-    hidden_size: 128
-    attention_head_size: 4
-    dropout: 0.2
-    hidden_continuous_size: 8
-    
-    # Input configuration
-    static_categoricals: []
-    static_reals: []
-    time_varying_known_categoricals: []
-    time_varying_known_reals: ['day_of_week', 'month', 'holiday']
-    time_varying_unknown_categoricals: []
-    time_varying_unknown_reals: [
-      'close_price', 'volume', 'volatility',
-      'sentiment_score', 'sentiment_confidence',
-      'sentiment_momentum', 'sentiment_volatility'
-    ]
+    # Architecture parameters (optimized for sentiment integration)
+    architecture:
+      hidden_size: 256  # Increased for complex sentiment patterns
+      lstm_layers: 2
+      attention_head_size: 4
+      dropout: 0.1  # Conservative for academic rigor
+      hidden_continuous_size: 16
+      output_size: [1, 5, 10, 22, 44]  # Multi-horizon prediction
+      
+    # Input specification (comprehensive)
+    inputs:
+      # Static categoricals (symbol fixed effects)
+      static_categoricals: ['symbol', 'sector']
+      static_reals: ['market_cap_log', 'listing_age', 'beta_60d']
+      
+      # Time-varying known (observable at prediction time)
+      time_varying_known_categoricals: [
+        'day_of_week', 'month', 'quarter', 'earnings_season',
+        'fomc_week', 'option_expiration', 'holiday'
+      ]
+      time_varying_known_reals: [
+        'vix', 'term_spread', 'credit_spread', 'dollar_index',
+        'market_return', 'sector_return'
+      ]
+      
+      # Time-varying unknown (target and contemporaneous features)
+      time_varying_unknown_reals: [
+        # Price features
+        'close_price_log', 'volume_log', 'returns', 'log_returns',
+        'volatility_22d', 'momentum_22d', 'turnover',
+        
+        # Technical features
+        'rsi_14', 'sma_ratio_22', 'ema_ratio_26', 'macd_normalized',
+        'bollinger_position', 'bollinger_width', 'atr_normalized',
+        
+        # Sentiment features (KEY INNOVATION)
+        'sentiment_mean', 'sentiment_median', 'sentiment_std',
+        'sentiment_count', 'sentiment_momentum_7d', 'sentiment_persistence_22d',
+        'relative_sentiment', 'sentiment_divergence', 'sentiment_surprise',
+        'sentiment_volatility', 'sentiment_consensus'
+      ]
     
     # Sequence configuration
-    max_encoder_length: 60  # Days of historical data
-    max_prediction_length: 30  # Days to predict
-    
+    sequence:
+      max_encoder_length: 66  # 3 months of daily data
+      max_prediction_length: 22  # 1 month prediction
+      
     # Target configuration
-    target: 'price_return'
-    target_normalizer: 'GroupNormalizer'
+    target:
+      target_variables: ['forward_return_22d']  # Primary target
+      target_normalizer: 'GroupNormalizer'  # Per-symbol normalization
+      loss_function: 'QuantileLoss'  # Robust to outliers
+      quantiles: [0.1, 0.5, 0.9]  # Prediction intervals
     
-  # Alternative models (for comparison)
+  # Baseline models (for academic comparison)
   baselines:
+    # Enhanced LSTM
     lstm:
       enabled: true
-      hidden_size: 64
-      num_layers: 2
+      architecture:
+        hidden_size: 128
+        num_layers: 2
+        dropout: 0.1
+        bidirectional: false
+      sequence_length: 66
+      features: 'all'  # Include all features
       
-    transformer:
-      enabled: false
-      d_model: 128
-      nhead: 8
+    # LSTM without sentiment
+    lstm_no_sentiment:
+      enabled: true
+      architecture:
+        hidden_size: 128
+        num_layers: 2
+        dropout: 0.1
+      features: 'no_sentiment'  # Technical + price only
       
+    # Linear model
     linear:
-      enabled: true  # Simple linear baseline
+      enabled: true
+      features: 'technical_only'
+      regularization: 'ridge'
+      alpha: 1.0
+      
+    # Random Forest (tree-based baseline)
+    random_forest:
+      enabled: true
+      n_estimators: 200  # Increased from 100
+      max_depth: 15      # Increased from 10
+      min_samples_leaf: 5
+      features: 'all'
+      
+    # XGBoost (gradient boosting baseline)
+    xgboost:
+      enabled: true
+      n_estimators: 200
+      max_depth: 8
+      learning_rate: 0.1
+      features: 'all'
+      
+    # Simple baselines
+    naive_baselines:
+      random_walk: true
+      historical_mean: true
+      last_value: true
+      moving_average: [22, 66]
 
 # =================
-# TRAINING SETTINGS
+# TRAINING PROTOCOL (ACADEMIC STANDARDS)
 # =================
 training:
+  # Academic training methodology
+  methodology:
+    validation_method: 'time_series_split'  # Proper for temporal data
+    cross_validation: 'walk_forward'
+    purged_cross_validation: true  # Prevent data leakage
+    embargo_period: 5  # 5-day gap between train/test
+    
   # General training configuration
   general:
-    max_epochs: 100
-    early_stopping_patience: 10
-    learning_rate: 0.001
-    weight_decay: 0.00001
-    batch_size: 64
+    max_epochs: 200  # Sufficient for convergence
+    min_epochs: 50   # Minimum training
+    early_stopping_patience: 20  # Conservative for academic rigor
     validation_split: 0.2
     test_split: 0.1
     
+    # Learning rate and optimization
+    learning_rate: 0.001  # Conservative starting point
+    weight_decay: 0.01    # L2 regularization
+    batch_size: 64        # Balance of stability and speed
+    
+    # Advanced optimization
+    optimizer_config:
+      optimizer: 'AdamW'
+      beta1: 0.9
+      beta2: 0.999
+      eps: 1e-8
+      amsgrad: false
+    
     # Learning rate scheduling
     lr_scheduler:
-      type: 'ReduceLROnPlateau'  # Options: ReduceLROnPlateau, StepLR, CosineAnnealingLR
+      type: 'ReduceLROnPlateau'
+      mode: 'min'
       factor: 0.5
-      patience: 5
+      patience: 15  # Conservative
+      min_lr: 1e-6
+      cooldown: 5
       
-  # Optimization
-  optimization:
-    optimizer: 'Adam'  # Options: Adam, AdamW, SGD
-    gradient_clipping: 1.0
-    mixed_precision: false
-    
-  # Data loading
+  # Data loading optimization
   data_loading:
-    num_workers: 4
+    num_workers: 6
     pin_memory: true
-    prefetch_factor: 2
+    prefetch_factor: 3  # Increased from 2
+    persistent_workers: true
+    drop_last: false
     
-  # Regularization
+  # Regularization (academic best practices)
   regularization:
-    dropout_rate: 0.2
-    l2_regularization: 0.00001
-    label_smoothing: 0.0
+    dropout_rate: 0.1
+    l2_regularization: 0.01
+    gradient_clipping: 1.0
+    label_smoothing: 0.0  # Not applicable for regression
+    
+  # Advanced training techniques
+  advanced:
+    mixed_precision: true  # Faster training
+    gradient_accumulation_steps: 1
+    find_unused_parameters: false
+    
+  # Reproducibility (critical for academics)
+  reproducibility:
+    deterministic: true
+    benchmark: false  # Exact reproducibility over speed
+    use_deterministic_algorithms: true
 
 # ==================
-# EVALUATION SETTINGS
+# HYPERPARAMETER TUNING (ACADEMIC RIGOR)
+# ==================
+hyperparameter_tuning:
+  # Tuning configuration
+  enabled: true  # Enable for academic rigor
+  method: 'optuna'
+  study_name: 'sentiment_tft_optimization'
+  
+  # Optimization settings
+  optimization:
+    n_trials: 100  # Increased from 50
+    timeout_hours: 48  # Increased from 24
+    n_jobs: 2  # Parallel trials
+    
+  # Search space (academic ranges)
+  search_space:
+    # Model architecture
+    hidden_size: [128, 256, 512]
+    attention_head_size: [2, 4, 8]
+    dropout: [0.05, 0.1, 0.15, 0.2]
+    hidden_continuous_size: [8, 16, 32]
+    
+    # Training parameters
+    learning_rate: [0.0005, 0.001, 0.002, 0.005]
+    weight_decay: [0.005, 0.01, 0.015]
+    batch_size: [32, 64, 128]
+    
+    # Sequence parameters
+    max_encoder_length: [44, 66, 88]
+    
+  # Optimization target
+  objective:
+    primary_metric: 'val_loss'
+    direction: 'minimize'
+    
+  # Advanced optimization
+  pruning:
+    enabled: true
+    algorithm: 'MedianPruner'
+    n_startup_trials: 10
+    n_warmup_steps: 20
+
+# ==================
+# EVALUATION PROTOCOL (COMPREHENSIVE ACADEMIC)
 # ==================
 evaluation:
-  # Metrics to compute
-  metrics:
-    regression:
-      - 'mae'  # Mean Absolute Error
-      - 'mse'  # Mean Squared Error
-      - 'rmse'  # Root Mean Squared Error
-      - 'mape'  # Mean Absolute Percentage Error
-      - 'r2'   # R-squared
+  # Academic evaluation methodology
+  methodology:
+    out_of_sample_testing: true
+    walk_forward_analysis: true
+    statistical_significance_testing: true
+    robustness_checks: true
+    sensitivity_analysis: true
+    
+  # Forecasting accuracy metrics
+  forecasting_metrics:
+    point_forecasts:
+      - 'mse'           # Mean Squared Error
+      - 'rmse'          # Root Mean Squared Error
+      - 'mae'           # Mean Absolute Error
+      - 'mape'          # Mean Absolute Percentage Error
+      - 'smape'         # Symmetric MAPE
+      - 'r2'            # R-squared
+      - 'adjusted_r2'   # Adjusted R-squared
       
-    trading:
-      - 'sharpe_ratio'
-      - 'max_drawdown'
+    information_metrics:
+      - 'ic'            # Information Coefficient
+      - 'rank_ic'       # Rank Information Coefficient
+      - 'ic_ir'         # IC Information Ratio
+      
+    directional_accuracy:
+      - 'hit_rate'              # Direction prediction accuracy
+      - 'up_capture_ratio'      # Up movement capture
+      - 'down_capture_ratio'    # Down movement capture
+      - 'directional_value'     # Economic value of direction
+      
+  # Financial performance metrics (academic standard)
+  financial_metrics:
+    returns_based:
+      - 'total_return'
       - 'annualized_return'
+      - 'excess_return'
+      - 'alpha'
+      - 'beta'
+      
+    risk_adjusted:
+      - 'sharpe_ratio'
+      - 'sortino_ratio'
+      - 'calmar_ratio'
+      - 'information_ratio'
+      - 'treynor_ratio'
+      - 'omega_ratio'
+      
+    risk_metrics:
+      - 'volatility'
+      - 'max_drawdown'
+      - 'value_at_risk'
+      - 'expected_shortfall'
+      - 'downside_deviation'
+      
+    trading_metrics:
+      - 'turnover'
+      - 'transaction_costs'
       - 'win_rate'
       - 'profit_factor'
+      - 'average_win_loss_ratio'
       
-    statistical:
-      - 'directional_accuracy'
-      - 'hit_rate'
-      - 'information_ratio'
-      
-  # Evaluation configuration
-  settings:
-    cross_validation:
-      enabled: true
-      n_folds: 5
-      time_series_split: true
-      
-    backtesting:
-      enabled: true
-      start_date: '2023-01-01'
-      end_date: '2024-01-31'
-      rebalance_frequency: 'monthly'
-      
-    statistical_tests:
-      significance_level: 0.05
+  # Statistical tests (academic rigor)
+  statistical_tests:
+    significance_tests:
+      level: 0.05
+      multiple_testing_correction: 'holm'
       bootstrap_samples: 1000
+      
+    hypothesis_tests:
+      - 'diebold_mariano'  # Forecast accuracy comparison
+      - 'newey_west'       # Robust standard errors
+      - 'white_reality_check'  # Multiple testing
+      
+    confidence_intervals:
+      levels: [0.90, 0.95, 0.99]
+      method: 'bootstrap'
+      
+  # Robustness analysis (academic standard)
+  robustness:
+    temporal_robustness:
+      subperiod_analysis: true
+      rolling_window_analysis: true
+      crisis_period_analysis: true
+      
+    cross_sectional_robustness:
+      individual_asset_analysis: true
+      sector_analysis: true
+      market_cap_analysis: true
+      
+    regime_analysis:
+      volatility_regimes: true
+      market_regimes: true
+      sentiment_regimes: true
+      
+  # Benchmark comparisons
+  benchmarks:
+    statistical_benchmarks:
+      - 'random_walk'
+      - 'historical_mean'
+      - 'ar_model'
+      - 'arima_model'
+      
+    ml_benchmarks:
+      - 'linear_regression'
+      - 'ridge_regression'
+      - 'random_forest'
+      - 'xgboost'
+      
+    financial_benchmarks:
+      - 'equal_weight_portfolio'
+      - 'market_cap_weighted'
+      - 'momentum_strategy'
+      - 'mean_reversion_strategy'
+      
+    ablation_studies:
+      - 'no_sentiment_features'
+      - 'sentiment_only'
+      - 'technical_only'
+      - 'price_only'
+
+# =================
+# LOGGING & MONITORING (ACADEMIC GRADE)
+# =================
+logging:
+  # General logging
+  level: 'INFO'
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  
+  # File logging
+  file_logging:
+    enabled: true
+    log_file: 'logs/academic_pipeline.log'
+    max_size_mb: 100  # Increased from 50
+    backup_count: 10  # Increased from 5
+    detailed_logging: true
+    
+  # Console logging
+  console_logging:
+    enabled: true
+    colored: true
+    progress_bars: true
+    
+  # Progress tracking
+  progress:
+    show_progress_bars: true
+    log_every_n_steps: 50  # More frequent logging
+    save_intermediate_results: true
+    
+  # Experiment tracking
+  experiment_tracking:
+    mlflow:
+      enabled: true  # Enable for academic reproducibility
+      tracking_uri: 'file:./mlruns'
+      experiment_name: 'sentiment_tft_academic'
+      log_models: true
+      log_artifacts: true
+      
+    tensorboard:
+      enabled: true
+      log_dir: 'logs/tensorboard'
+      
+  # Research documentation
+  documentation:
+    auto_generate_reports: true
+    save_config_history: true
+    version_control_integration: true
+
+# =================
+# SYSTEM OPTIMIZATION (PRODUCTION-GRADE)
+# =================
+system:
+  # Hardware configuration
+  hardware:
+    device: 'auto'  # Auto-detect best device (CPU/CUDA/MPS)
+    gpu_memory_fraction: 0.85  # Increased from 0.8
+    cpu_threads: 6  # Explicit thread count
+    mixed_precision: true
+    
+  # Memory management
+  memory:
+    max_memory_usage_gb: 24  # Increased from 16
+    garbage_collection: true
+    memory_profiling: true  # Enable for optimization
+    gradient_checkpointing: false
+    
+  # Performance optimization
+  performance:
+    compile_model: false  # PyTorch 2.0 compilation (disable for reproducibility)
+    use_mixed_precision: true
+    pin_memory: true
+    persistent_workers: true
+    
+  # Reproducibility (CRITICAL for academic research)
+  reproducibility:
+    random_seed: 42
+    deterministic: true
+    benchmark: false  # Exact reproducibility over speed
+    use_deterministic_algorithms: true
+    hash_seed: 42
 
 # ===============
-# FILE PATHS
+# FILE PATHS (COMPREHENSIVE ACADEMIC STRUCTURE)
 # ===============
 paths:
   # Base directories
@@ -253,176 +756,145 @@ paths:
   models_dir: 'models'
   results_dir: 'results'
   logs_dir: 'logs'
+  reports_dir: 'reports'  # Added for academic outputs
   
   # Raw data files
   raw:
     fnspid_data: 'data/raw/nasdaq_exteral_data.csv'
     yahoo_data: 'data/raw/yahoo_finance_data.csv'
+    market_data: 'data/raw/market_indicators.csv'  # Added
     
   # Processed data files
   processed:
+    # Core datasets
     core_dataset: 'data/processed/combined_dataset.csv'
+    final_dataset: 'data/processed/final_academic_dataset.csv'
+    
+    # FNSPID processing
     fnspid_filtered_articles: 'data/processed/fnspid_filtered_articles.csv'
     fnspid_article_sentiment: 'data/processed/fnspid_article_sentiment.csv'
     fnspid_daily_sentiment: 'data/processed/fnspid_daily_sentiment.csv'
+    
+    # Feature engineering
     temporal_decay_dataset: 'data/processed/temporal_decay_enhanced_dataset.csv'
-    final_dataset: 'data/processed/final_dataset.csv'
+    technical_features: 'data/processed/technical_features.csv'
+    sentiment_features: 'data/processed/sentiment_features.csv'
+    macro_features: 'data/processed/macro_features.csv'
+    
+    # Train/validation/test splits
+    train_dataset: 'data/processed/train_dataset.csv'
+    validation_dataset: 'data/processed/validation_dataset.csv'
+    test_dataset: 'data/processed/test_dataset.csv'
     
   # Model files
   models:
-    tft_checkpoint: 'models/tft/best_model.ckpt'
-    tft_final: 'models/tft/final_model.pkl'
-    lstm_model: 'models/baselines/lstm_model.pkl'
-    linear_model: 'models/baselines/linear_model.pkl'
+    # TFT models
+    tft_checkpoints: 'models/tft/checkpoints'
+    tft_best_model: 'models/tft/best_model.ckpt'
+    tft_final_model: 'models/tft/final_model.pkl'
     
-  # Results files
+    # Baseline models
+    lstm_baseline: 'models/baselines/lstm_model.pkl'
+    lstm_no_sentiment: 'models/baselines/lstm_no_sentiment.pkl'
+    linear_baseline: 'models/baselines/linear_model.pkl'
+    rf_baseline: 'models/baselines/random_forest.pkl'
+    xgb_baseline: 'models/baselines/xgboost.pkl'
+    
+    # Preprocessing objects
+    scalers: 'models/preprocessing/scalers.pkl'
+    encoders: 'models/preprocessing/encoders.pkl'
+    
+  # Results files (academic structure)
   results:
-    training_logs: 'results/training_logs.csv'
-    evaluation_results: 'results/evaluation_results.json'
-    predictions: 'results/predictions.csv'
-    backtest_results: 'results/backtest_results.csv'
-    feature_importance: 'results/feature_importance.csv'
+    # Training results
+    training_logs: 'results/training/training_logs.csv'
+    training_metrics: 'results/training/training_metrics.json'
+    
+    # Evaluation results
+    evaluation_summary: 'results/evaluation/evaluation_summary.json'
+    forecasting_metrics: 'results/evaluation/forecasting_metrics.csv'
+    financial_metrics: 'results/evaluation/financial_metrics.csv'
+    statistical_tests: 'results/evaluation/statistical_tests.json'
+    
+    # Predictions
+    predictions_train: 'results/predictions/train_predictions.csv'
+    predictions_validation: 'results/predictions/validation_predictions.csv'
+    predictions_test: 'results/predictions/test_predictions.csv'
+    
+    # Analysis results
+    feature_importance: 'results/analysis/feature_importance.csv'
+    attention_weights: 'results/analysis/attention_weights.csv'
+    sentiment_analysis: 'results/analysis/sentiment_analysis.csv'
+    robustness_tests: 'results/analysis/robustness_tests.json'
+    
+    # Plots and visualizations
+    plots: 'results/plots'
+    
+  # Academic reports
+  reports:
+    methodology: 'reports/methodology.md'
+    results_summary: 'reports/results_summary.md'
+    statistical_appendix: 'reports/statistical_appendix.md'
+    figures: 'reports/figures'
+    tables: 'reports/tables'
 
 # =================
-# LOGGING & OUTPUT
+# ACADEMIC OUTPUT GENERATION
 # =================
-logging:
-  # General logging
-  level: 'INFO'  # Options: DEBUG, INFO, WARNING, ERROR
-  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-  
-  # File logging
-  file_logging:
-    enabled: true
-    log_file: 'logs/pipeline.log'
-    max_size_mb: 50
-    backup_count: 5
+output:
+  # Academic reporting
+  academic_reports:
+    methodology_report: true
+    results_summary: true
+    statistical_appendix: true
+    robustness_analysis: true
+    feature_importance_analysis: true
     
-  # Console logging
-  console_logging:
-    enabled: true
-    colored: true
+  # Visualizations (publication-ready)
+  visualizations:
+    performance_charts: true
+    prediction_accuracy_plots: true
+    feature_importance_plots: true
+    attention_visualization: true
+    sentiment_impact_analysis: true
+    regime_analysis_plots: true
     
-  # Progress tracking
-  progress:
-    show_progress_bars: true
-    log_every_n_steps: 100
+  # Data exports (for external analysis)
+  data_exports:
+    predictions_csv: true
+    feature_importance_csv: true
+    attention_weights_csv: true
+    performance_metrics_json: true
+    model_parameters_json: true
+    statistical_results_json: true
     
-  # MLflow tracking (optional)
-  mlflow:
-    enabled: false
-    tracking_uri: null
-    experiment_name: 'sentiment_tft'
+  # Academic formats
+  academic_formats:
+    latex_tables: true
+    publication_figures: true
+    supplementary_materials: true
 
 # =================
-# SYSTEM SETTINGS
-# =================
-system:
-  # Hardware configuration
-  hardware:
-    device: 'auto'  # Options: auto, cpu, cuda, mps
-    gpu_memory_fraction: 0.8
-    cpu_threads: null  # null = auto-detect
-    
-  # Memory management
-  memory:
-    max_memory_usage_gb: 16
-    garbage_collection: true
-    memory_profiling: false
-    
-  # Reproducibility
-  reproducibility:
-    random_seed: 42
-    deterministic: true
-    benchmark: false
-    
-  # Performance
-  performance:
-    compile_model: false  # PyTorch 2.0+ compilation
-    use_mixed_precision: false
-    gradient_checkpointing: false
-
-# ==================
-# FEATURE ENGINEERING
-# ==================
-features:
-  # Price-based features
-  price_features:
-    returns: true
-    log_returns: true
-    volatility: true
-    rolling_statistics: [5, 10, 20, 50]
-    
-  # Technical indicators
-  technical:
-    sma: [10, 20, 50]  # Simple Moving Average periods
-    ema: [12, 26]      # Exponential Moving Average periods
-    rsi: 14            # RSI period
-    macd: true
-    bollinger_bands: true
-    
-  # Sentiment features
-  sentiment_features:
-    raw_sentiment: true
-    rolling_sentiment: [3, 7, 14]
-    sentiment_momentum: true
-    sentiment_divergence: true
-    
-  # Market regime features
-  market_regime:
-    vix_level: true
-    market_stress: true
-    sector_rotation: true
-    
-  # Calendar features
-  calendar:
-    day_of_week: true
-    month: true
-    quarter: true
-    holidays: true
-    earnings_season: true
-
-# ==================
-# HYPERPARAMETER TUNING
-# ==================
-hyperparameter_tuning:
-  # General settings
-  enabled: false
-  method: 'optuna'  # Options: optuna, ray_tune, grid_search
-  n_trials: 50
-  timeout_hours: 24
-  
-  # Search space
-  search_space:
-    learning_rate: [0.0001, 0.01]
-    hidden_size: [64, 128, 256]
-    dropout: [0.1, 0.5]
-    batch_size: [32, 64, 128]
-    
-  # Optimization
-  objective: 'val_loss'
-  direction: 'minimize'
-  pruning: true
-
-# =================
-# DEPLOYMENT
+# DEPLOYMENT (OPTIONAL - FOR PRODUCTION USE)
 # =================
 deployment:
-  # Model serving
+  # Model serving (optional)
   serving:
-    enabled: false
-    framework: 'fastapi'  # Options: fastapi, flask, torchserve
+    enabled: false  # Disable for pure research
+    framework: 'fastapi'
     host: '0.0.0.0'
     port: 8000
+    model_version: 'latest'
     
-  # Monitoring
+  # Monitoring (for production)
   monitoring:
-    model_drift: true
-    data_drift: true
-    performance_monitoring: true
+    model_drift_detection: false
+    data_drift_detection: false
+    performance_monitoring: false
     
   # Batch inference
   batch_inference:
+    enabled: false
     schedule: 'daily'
     output_format: 'csv'
     notification: false
