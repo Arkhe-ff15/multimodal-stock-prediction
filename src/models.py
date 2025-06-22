@@ -45,8 +45,6 @@ from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_forecasting import TimeSeriesDataSet, GroupNormalizer
-from pytorch_forecasting.data import ModelTrainingError
 import logging
 import json
 from datetime import datetime, timedelta
@@ -62,7 +60,6 @@ import psutil
 import gc
 import traceback
 
-# PyTorch Forecasting (TFT)
 try:
     from pytorch_forecasting import TimeSeriesDataSet, TemporalFusionTransformer
     from pytorch_forecasting.data import GroupNormalizer
@@ -70,7 +67,54 @@ try:
     TFT_AVAILABLE = True
 except ImportError:
     TFT_AVAILABLE = False
-    logging.warning("⚠️ PyTorch Forecasting not available - TFT models will be skipped")
+
+# ADD THIS CODE TO YOUR src/models.py FILE
+# LOCATION: Right after the import section (around line 67)
+
+class ModelTrainingError(Exception):
+    """Custom exception for model training failures"""
+    pass
+
+class MemoryMonitor:
+    """Memory usage monitoring utility"""
+    
+    @staticmethod
+    def get_memory_usage() -> Dict[str, float]:
+        """Get current memory usage statistics"""
+        memory = psutil.virtual_memory()
+        return {
+            'total_gb': memory.total / (1024**3),
+            'used_gb': memory.used / (1024**3),
+            'available_gb': memory.available / (1024**3),
+            'percent': memory.percent
+        }
+    
+    @staticmethod
+    def check_memory_threshold(threshold: float = 80.0) -> bool:
+        """Check if memory usage exceeds threshold"""
+        memory_percent = psutil.virtual_memory().percent
+        if memory_percent > threshold:
+            logger.warning(f"🚨 High memory usage: {memory_percent:.1f}%")
+            return True
+        return False
+    
+    @staticmethod
+    def log_memory_status():
+        """Log current memory status"""
+        stats = MemoryMonitor.get_memory_usage()
+        logger.info(f"💾 Memory: {stats['used_gb']:.1f}GB/{stats['total_gb']:.1f}GB ({stats['percent']:.1f}%)")
+
+def set_random_seeds(seed: int = 42):
+    """Set random seeds for reproducibility"""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    if 'pytorch_lightning' in sys.modules:
+        pl.seed_everything(seed)
 
 # Configure logging
 logging.basicConfig(
@@ -692,8 +736,7 @@ class EnhancedLSTMModel(nn.Module):
         # Enhanced output processing
         context = self.layer_norm(context)
         x = self.activation(self.fc1(self.dropout(context)))
-        output = self.fc2(self.dropout(x))
-        
+        output = torch.tanh(self.fc2(self.dropout(x)))  # ✅ ADDED ACTIVATION
         return output.squeeze()
 
 class EnhancedLSTMTrainer(pl.LightningModule):
@@ -1616,6 +1659,7 @@ class EnhancedModelFramework:
                 # Enhanced PyTorch Lightning trainer
                 trainer = pl.Trainer(
                     max_epochs=100,
+                    gradient_clip_val=0.5,
                     accelerator="auto",
                     devices="auto",
                     callbacks=[early_stop, checkpoint, lr_monitor],
