@@ -50,6 +50,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Any, Optional, Union
 from sklearn.preprocessing import RobustScaler
+scaler = RobustScaler()  # ✅ This is correct
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -1132,7 +1133,7 @@ class EnhancedTFTModel:
                     time_varying_unknown_reals=feature_config.get('time_varying_unknown_reals', []),
                     target_normalizer=GroupNormalizer(
                         groups=['symbol'],
-                        transformation="robust",  # More robust than softplus
+                        transformation="softplus",  # More robust than softplus
                         center=True
                     ),
                     add_relative_time_idx=True,
