@@ -1,466 +1,437 @@
 #!/usr/bin/env python3
 """
-TARGETED TFT DATASET CREATION FIX
-=================================
-Fix for the exact 'robust' error in TimeSeriesDataSet creation
+QUICK FIX IMPLEMENTATION SCRIPT
+===============================
+Run this script to apply the most critical fixes to resolve TFT training issues.
 
-The error is happening in the TFT dataset creation step, not the scaler.
-This script will patch the exact location where 'robust' is being used incorrectly.
+Usage: python quick_fix_script.py
+"""
+
+import os
+import shutil
+import re
+from pathlib import Path
+from datetime import datetime
+
+def backup_file(file_path):
+    """Create backup of original file"""
+    backup_path = f"{file_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    shutil.copy2(file_path, backup_path)
+    print(f"✅ Backup created: {backup_path}")
+    return backup_path
+
+def apply_critical_fixes():
+    """Apply the most critical fixes to resolve TFT training issues"""
+    
+    print("🔧 APPLYING CRITICAL TFT FIXES")
+    print("=" * 50)
+    
+    models_py_path = Path("src/models.py")
+    
+    if not models_py_path.exists():
+        print(f"❌ File not found: {models_py_path}")
+        return False
+    
+    # Create backup
+    backup_path = backup_file(models_py_path)
+    
+    try:
+        # Read the original file
+        with open(models_py_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        print("📝 Applying fixes...")
+        
+        # Fix 0: CRITICAL - Fix Lightning import pattern
+        lightning_import_patterns = [
+            (r'import pytorch_lightning as pl', 'import lightning.pytorch as pl'),
+            (r'from pytorch_lightning\b', 'from lightning.pytorch'),
+            (r'from pytorch_lightning\.', 'from lightning.pytorch.'),
+        ]
+        
+        for old_pattern, new_pattern in lightning_import_patterns:
+            if re.search(old_pattern, content):
+                content = re.sub(old_pattern, new_pattern, content)
+                print(f"   ✅ Fixed Lightning import: {old_pattern} -> {new_pattern}")
+        
+        # Check if we need both import styles (compatibility)
+        if 'pytorch_lightning' in content and 'lightning.pytorch' not in content:
+            # Add compatibility import
+            import_section = re.search(r'(import warnings\nwarnings\.filterwarnings\(\'ignore\'\))', content)
+            if import_section:
+                compatibility_imports = '''
+# Lightning compatibility imports
+try:
+    import lightning.pytorch as pl
+    from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
+    from lightning.pytorch.loggers import TensorBoardLogger
+    LIGHTNING_AVAILABLE = True
+except ImportError:
+    try:
+        import pytorch_lightning as pl
+        from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
+        from pytorch_lightning.loggers import TensorBoardLogger
+        LIGHTNING_AVAILABLE = True
+    except ImportError:
+        LIGHTNING_AVAILABLE = False
+'''
+                content = content.replace(
+                    import_section.group(1),
+                    import_section.group(1) + compatibility_imports
+                )
+                print("   ✅ Added Lightning compatibility imports")
+        
+        # Fix 1: Add signal import
+        if 'import signal' not in content:
+            import_section = re.search(r'(import warnings\nwarnings\.filterwarnings\(\'ignore\'\))', content)
+            if import_section:
+                content = content.replace(
+                    import_section.group(1),
+                    import_section.group(1) + '\nimport signal\nimport time'
+                )
+                print("   ✅ Added signal and time imports")
+        
+        # Fix 2: Replace "robust" transformation with "softplus"
+        robust_patterns = [
+            r'transformation="robust"',
+            r"transformation='robust'",
+            r'transformation=.*robust.*'
+        ]
+        
+        for pattern in robust_patterns:
+            if re.search(pattern, content):
+                content = re.sub(pattern, 'transformation="softplus"', content)
+                print("   ✅ Fixed 'robust' transformation -> 'softplus'")
+        
+        # Fix 3: Add signal handler function
+        signal_handler_code = '''
+def setup_signal_handlers():
+    """Setup graceful shutdown handlers"""
+    def signal_handler(signum, frame):
+        logger.info(f"🛑 Received signal {signum}, attempting graceful shutdown...")
+        raise KeyboardInterrupt("Training interrupted by user")
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+'''
+        
+        # Find a good place to insert the signal handler (after imports, before classes)
+        class_match = re.search(r'class ModelTrainingError\(Exception\):', content)
+        if class_match and 'setup_signal_handlers' not in content:
+            insert_pos = class_match.start()
+            content = content[:insert_pos] + signal_handler_code + content[insert_pos:]
+            print("   ✅ Added signal handler function")
+        
+        # Fix 4: Fix the exit() call issue
+        exit_pattern = r'(\s+)exit\(1\)(\s*#.*)?'
+        if re.search(exit_pattern, content):
+            content = re.sub(
+                exit_pattern,
+                r'\1# Fixed: Return gracefully instead of calling exit()\1return {"error": "Training interrupted", "interrupted": True}',
+                content
+            )
+            print("   ✅ Fixed exit() call issue")
+        
+        # Fix 5: Add Lightning module check before trainer.fit()
+        trainer_fit_pattern = r'(\s+)(self\.trainer\.fit\(self\.model,.*?\))'
+        if re.search(trainer_fit_pattern, content):
+            lightning_check = r'''\1# FIX: Ensure model is Lightning compatible
+\1if not isinstance(self.model, pl.LightningModule):
+\1    raise ModelTrainingError(f"Model is not a LightningModule: {type(self.model)}")
+\1
+\1\2'''
+            
+            content = re.sub(trainer_fit_pattern, lightning_check, content)
+            print("   ✅ Added Lightning module compatibility check")
+        
+        # Fix 6: Add version compatibility check function
+        version_check_code = '''
+def check_version_compatibility():
+    """Check package version compatibility"""
+    try:
+        import pytorch_lightning as pl
+        import pytorch_forecasting as pf
+        import torch
+        
+        logger.info("🔍 Checking version compatibility...")
+        logger.info(f"   PyTorch: {torch.__version__}")
+        logger.info(f"   Lightning: {pl.__version__}")
+        logger.info(f"   PyTorch Forecasting: {pf.__version__}")
+        
+        # Check for known incompatible versions
+        if pl.__version__.startswith('2.'):
+            logger.warning("⚠️ Lightning 2.x detected - may have compatibility issues")
+        
+        return True
+    except Exception as e:
+        logger.error(f"❌ Version compatibility check failed: {e}")
+        return False
+
+'''
+        
+        # Insert version check function
+        if 'check_version_compatibility' not in content:
+            signal_handler_pos = content.find('def setup_signal_handlers():')
+            if signal_handler_pos != -1:
+                content = content[:signal_handler_pos] + version_check_code + content[signal_handler_pos:]
+                print("   ✅ Added version compatibility check")
+        
+        # Fix 7: Add signal handler call in training methods
+        training_start_pattern = r'(\s+)(start_time = datetime\.now\(\))'
+        if re.search(training_start_pattern, content):
+            signal_setup = r'\1setup_signal_handlers()  # Setup graceful shutdown\1\2'
+            content = re.sub(training_start_pattern, signal_setup, content)
+            print("   ✅ Added signal handler setup in training methods")
+        
+        # Write the fixed content back
+        with open(models_py_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        print("✅ All critical fixes applied successfully!")
+        print(f"📁 Original backed up to: {backup_path}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error applying fixes: {e}")
+        print(f"🔄 Restoring from backup: {backup_path}")
+        
+        # Restore from backup
+        shutil.copy2(backup_path, models_py_path)
+        return False
+
+def create_test_script():
+    """Create a test script to verify the fixes"""
+    
+    test_script = '''#!/usr/bin/env python3
+"""
+QUICK TEST SCRIPT FOR TFT FIXES
+===============================
 """
 
 import sys
-import os
 from pathlib import Path
-import traceback
-import pandas as pd
-import numpy as np
-from datetime import datetime
+sys.path.append('src')
 
-# Setup paths
-current_dir = Path.cwd()
-sys.path.insert(0, str(current_dir))
-sys.path.insert(0, str(current_dir / 'src'))
-
-print("🎯 TARGETED TFT DATASET CREATION FIX")
-print("=" * 50)
-
-def analyze_tft_error():
-    """Analyze the exact TFT dataset creation error"""
-    
-    print("🔍 ANALYZING TFT DATASET CREATION ERROR")
-    print("-" * 40)
-    
+def test_imports():
+    """Test that all imports work"""
+    print("🧪 Testing imports...")
     try:
-        # Load the data exactly as the failing code does
-        from models import EnhancedDataLoader, EnhancedTFTModel
-        
-        data_loader = EnhancedDataLoader()
-        enhanced_dataset = data_loader.load_dataset('enhanced')
-        
-        # Get the combined data exactly as the TFT model does
-        train_data = enhanced_dataset['splits']['train']
-        val_data = enhanced_dataset['splits']['val']
-        
-        combined_data = pd.concat([train_data, val_data], ignore_index=True)
-        combined_data = combined_data.sort_values(['stock_id', 'date']).reset_index(drop=True)
-        
-        print(f"📊 Combined data shape: {combined_data.shape}")
-        print(f"📊 Columns: {list(combined_data.columns)}")
-        
-        # Check for any 'robust' values in the data itself
-        print(f"\n🔍 CHECKING FOR 'ROBUST' VALUES IN DATA:")
-        
-        for col in combined_data.columns:
-            if combined_data[col].dtype == 'object':
-                unique_values = combined_data[col].unique()
-                if 'robust' in unique_values:
-                    print(f"🚨 Found 'robust' in column {col}: {unique_values}")
-                
-                # Check for any string values that might contain 'robust'
-                str_values = [str(v) for v in unique_values if pd.notna(v)]
-                robust_strs = [v for v in str_values if 'robust' in str(v).lower()]
-                if robust_strs:
-                    print(f"🚨 Found 'robust' strings in {col}: {robust_strs}")
-        
-        # Check the time_idx creation (common source of issues)
-        print(f"\n🔍 CHECKING TIME INDEX CREATION:")
-        
-        # This is likely where the issue is - let's see what happens when we create time_idx
-        try:
-            # Group by stock_id and create time index
-            combined_data['time_idx'] = combined_data.groupby('stock_id').cumcount()
-            print(f"✅ Time index created successfully")
-            print(f"📊 Time index range: {combined_data['time_idx'].min()} to {combined_data['time_idx'].max()}")
-            
-        except Exception as time_error:
-            print(f"🚨 Time index creation failed: {time_error}")
-            if 'robust' in str(time_error):
-                print(f"🎯 FOUND THE ISSUE: Time index creation is causing 'robust' error")
-        
-        # Now try to create the TimeSeriesDataSet step by step
-        print(f"\n🔍 TESTING TIMESERISDATASET CREATION STEP BY STEP:")
-        
-        from pytorch_forecasting import TimeSeriesDataSet, GroupNormalizer
-        
-        # Test basic parameters first
-        basic_params = {
-            'time_idx': 'time_idx',
-            'target': 'target_5',
-            'group_ids': ['stock_id'],
-            'max_encoder_length': 30,
-            'max_prediction_length': 5
-        }
-        
-        print(f"📋 Testing basic parameters...")
-        for param, value in basic_params.items():
-            if param in ['time_idx', 'target'] and isinstance(value, str):
-                if value not in combined_data.columns:
-                    print(f"🚨 Missing column for {param}: {value}")
-                else:
-                    print(f"✅ Column exists for {param}: {value}")
-            elif param == 'group_ids' and isinstance(value, list):
-                missing_groups = [g for g in value if g not in combined_data.columns]
-                if missing_groups:
-                    print(f"🚨 Missing group columns: {missing_groups}")
-                else:
-                    print(f"✅ Group columns exist: {value}")
-        
-        # Test the target_normalizer (MOST LIKELY CULPRIT)
-        print(f"\n🎯 TESTING TARGET NORMALIZER (MOST LIKELY ISSUE):")
-        
-        try:
-            # This is probably where 'robust' is being used incorrectly
-            target_normalizer = GroupNormalizer(groups=["stock_id"], transformation="softplus")
-            print(f"✅ Target normalizer created successfully")
-        except Exception as normalizer_error:
-            print(f"🚨 Target normalizer failed: {normalizer_error}")
-            if 'robust' in str(normalizer_error):
-                print(f"🎯 FOUND IT: Target normalizer is using 'robust' incorrectly")
-        
-        # Test different normalizer options
-        print(f"\n🔧 TESTING ALTERNATIVE NORMALIZERS:")
-        
-        normalizer_options = [
-            ("No normalizer", None),
-            ("Softplus", GroupNormalizer(groups=["stock_id"], transformation="softplus")),
-            ("Log", GroupNormalizer(groups=["stock_id"], transformation="log")),
-            ("None transform", GroupNormalizer(groups=["stock_id"]))
-        ]
-        
-        working_normalizer = None
-        
-        for name, normalizer in normalizer_options:
-            try:
-                # Try a minimal TimeSeriesDataSet creation
-                test_dataset = TimeSeriesDataSet(
-                    combined_data.iloc[:100],  # Just first 100 rows for testing
-                    time_idx="time_idx",
-                    target="target_5",
-                    group_ids=["stock_id"],
-                    max_encoder_length=5,  # Small for testing
-                    max_prediction_length=1,
-                    target_normalizer=normalizer,
-                    add_relative_time_idx=True
-                )
-                print(f"✅ {name} normalizer works!")
-                working_normalizer = normalizer
-                break
-                
-            except Exception as test_error:
-                print(f"❌ {name} normalizer failed: {test_error}")
-                if 'robust' in str(test_error):
-                    print(f"🚨 'robust' error with {name} normalizer")
-        
-        return working_normalizer
-        
+        from models import (
+            setup_signal_handlers, 
+            check_version_compatibility,
+            EnhancedTFTModel,
+            EnhancedDataLoader
+        )
+        print("   ✅ All imports successful")
+        return True
     except Exception as e:
-        print(f"❌ Analysis failed: {e}")
-        traceback.print_exc()
-        return None
+        print(f"   ❌ Import failed: {e}")
+        return False
 
-def create_fixed_tft_method():
-    """Create a fixed version of the TFT dataset creation method"""
-    
-    print(f"\n🔧 CREATING FIXED TFT METHOD")
-    print("-" * 35)
-    
-    fixed_code = '''
-def prepare_dataset_FIXED(self, dataset_dict):
-    """FIXED: TFT dataset preparation that avoids 'robust' error"""
-    
+def test_signal_handlers():
+    """Test signal handler setup"""
+    print("🧪 Testing signal handlers...")
     try:
-        logger.info("📊 Preparing enhanced TFT dataset (FIXED)...")
-        MemoryMonitor.log_memory_status()
-        
-        # Get data
-        train_data = dataset_dict['splits']['train']
-        val_data = dataset_dict['splits']['val']
-        
-        # Combine data
-        combined_data = pd.concat([train_data, val_data], ignore_index=True)
-        combined_data = combined_data.sort_values(['stock_id', 'date']).reset_index(drop=True)
-        
-        logger.info(f"📊 Combined data: {len(combined_data):,} records")
-        
-        # CRITICAL FIX 1: Ensure time_idx is created properly
-        combined_data['time_idx'] = combined_data.groupby('stock_id').cumcount()
-        logger.info(f"📅 Time index range: {combined_data['time_idx'].min()} to {combined_data['time_idx'].max()}")
-        
-        # CRITICAL FIX 2: Clean any problematic data
-        # Remove any 'robust' string values that might be in the data
-        for col in combined_data.columns:
-            if combined_data[col].dtype == 'object':
-                # Replace any 'robust' strings with NaN
-                mask = combined_data[col].astype(str).str.contains('robust', case=False, na=False)
-                if mask.any():
-                    logger.warning(f"⚠️ Cleaning 'robust' values from {col}: {mask.sum()} values")
-                    combined_data.loc[mask, col] = np.nan
-        
-        # CRITICAL FIX 3: Handle missing values properly
-        logger.info("🔧 Handling missing values...")
-        
-        # Forward fill missing values for each stock
-        for stock_id in combined_data['stock_id'].unique():
-            stock_mask = combined_data['stock_id'] == stock_id
-            combined_data.loc[stock_mask] = combined_data.loc[stock_mask].fillna(method='ffill')
-        
-        # Backward fill any remaining NaNs
-        combined_data = combined_data.fillna(method='bfill')
-        
-        # Drop any remaining NaN rows in critical columns
-        critical_cols = ['stock_id', 'time_idx', 'target_5']
-        combined_data = combined_data.dropna(subset=critical_cols)
-        
-        logger.info(f"✅ Data cleaning complete: {len(combined_data):,} records")
-        
-        # CRITICAL FIX 4: Use simple normalizer to avoid 'robust' issues
-        from pytorch_forecasting import TimeSeriesDataSet, GroupNormalizer
-        
-        # Try multiple normalizer approaches
-        normalizer_attempts = [
-            ("Standard GroupNormalizer", GroupNormalizer(groups=["stock_id"], transformation="softplus")),
-            ("Simple GroupNormalizer", GroupNormalizer(groups=["stock_id"])),
-            ("No normalizer", None)
-        ]
-        
-        dataset_created = False
-        
-        for attempt_name, target_normalizer in normalizer_attempts:
-            try:
-                logger.info(f"🔄 Trying {attempt_name}...")
-                
-                # Get features (simplified to avoid issues)
-                feature_columns = [col for col in combined_data.columns 
-                                 if col not in ['stock_id', 'date', 'time_idx', 'target_5', 'target_5d', 'target_30d', 'target_90d']]
-                
-                # Split features by type
-                time_varying_known = ['week_of_year', 'day_of_year_sin', 'day_of_year_cos', 'days_since_start', 'trading_day_of_month']
-                time_varying_known = [col for col in time_varying_known if col in feature_columns]
-                
-                time_varying_unknown = [col for col in feature_columns if col not in time_varying_known]
-                
-                logger.info(f"📊 Features: {len(time_varying_known)} known, {len(time_varying_unknown)} unknown")
-                
-                # CRITICAL FIX 5: Create dataset with minimal parameters first
-                training_data = combined_data[combined_data.time_idx <= combined_data.time_idx.quantile(0.8)]
-                
-                self.training_dataset = TimeSeriesDataSet(
-                    training_data,
-                    time_idx="time_idx",
-                    target="target_5",
-                    group_ids=["stock_id"],
-                    max_encoder_length=30,
-                    max_prediction_length=5,
-                    static_categoricals=[],  # Empty to avoid issues
-                    static_reals=[],  # Empty to avoid issues
-                    time_varying_known_reals=time_varying_known,
-                    time_varying_unknown_reals=time_varying_unknown,
-                    target_normalizer=target_normalizer,
-                    add_relative_time_idx=True,
-                    add_target_scales=True,
-                    add_encoder_length=True,
-                    allow_missing_timesteps=True
-                )
-                
-                # Validation dataset
-                validation_data = combined_data[combined_data.time_idx > combined_data.time_idx.quantile(0.8)]
-                
-                self.validation_dataset = TimeSeriesDataSet.from_dataset(
-                    self.training_dataset,
-                    validation_data,
-                    predict=True,
-                    stop_randomization=True
-                )
-                
-                logger.info(f"✅ TFT datasets created with {attempt_name}")
-                logger.info(f"📊 Training samples: {len(self.training_dataset):,}")
-                logger.info(f"📊 Validation samples: {len(self.validation_dataset):,}")
-                
-                dataset_created = True
-                break
-                
-            except Exception as attempt_error:
-                logger.warning(f"⚠️ {attempt_name} failed: {attempt_error}")
-                if 'robust' in str(attempt_error):
-                    logger.error(f"🚨 Still getting 'robust' error with {attempt_name}")
-                continue
-        
-        if not dataset_created:
-            raise ModelTrainingError("All normalizer attempts failed - TFT dataset creation impossible")
-        
-        # Store feature configuration
-        self.feature_config = {
-            'static_categoricals': [],
-            'static_reals': [],
-            'time_varying_known_reals': time_varying_known,
-            'time_varying_unknown_reals': time_varying_unknown
-        }
-        
-        logger.info("✅ Enhanced TFT dataset preparation completed successfully")
-        
+        from models import setup_signal_handlers
+        setup_signal_handlers()
+        print("   ✅ Signal handlers configured")
+        return True
     except Exception as e:
-        logger.error(f"❌ Enhanced TFT dataset preparation failed: {e}")
-        raise ModelTrainingError(f"Enhanced TFT dataset preparation failed: {e}")
-'''
-    
-    return fixed_code
+        print(f"   ❌ Signal handler test failed: {e}")
+        return False
 
-def apply_emergency_patch():
-    """Apply emergency patch to fix the TFT issue immediately"""
-    
-    print(f"\n🚨 APPLYING EMERGENCY PATCH")
-    print("-" * 30)
-    
+def test_version_compatibility():
+    """Test version compatibility check"""
+    print("🧪 Testing version compatibility...")
     try:
-        # Test the working normalizer we found
-        working_normalizer = analyze_tft_error()
-        
-        if working_normalizer is not None:
-            print(f"✅ Found working normalizer approach")
-            
-            # Now test the complete fixed method
-            from models import EnhancedDataLoader, EnhancedTFTModel
-            
-            data_loader = EnhancedDataLoader()
-            enhanced_dataset = data_loader.load_dataset('enhanced')
-            
-            # Create TFT model
-            tft_model = EnhancedTFTModel(model_type="enhanced")
-            
-            # Monkey patch the prepare_dataset method with our fix
-            def fixed_prepare_dataset(self, dataset_dict):
-                """Emergency patched version"""
-                
-                try:
-                    from pytorch_forecasting import TimeSeriesDataSet, GroupNormalizer
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    
-                    # Get data
-                    train_data = dataset_dict['splits']['train']
-                    val_data = dataset_dict['splits']['val']
-                    
-                    # Combine data
-                    combined_data = pd.concat([train_data, val_data], ignore_index=True)
-                    combined_data = combined_data.sort_values(['stock_id', 'date']).reset_index(drop=True)
-                    
-                    # Create time index
-                    combined_data['time_idx'] = combined_data.groupby('stock_id').cumcount()
-                    
-                    # Clean any 'robust' string values
-                    for col in combined_data.columns:
-                        if combined_data[col].dtype == 'object':
-                            mask = combined_data[col].astype(str).str.contains('robust', case=False, na=False)
-                            if mask.any():
-                                combined_data.loc[mask, col] = np.nan
-                    
-                    # Handle missing values
-                    combined_data = combined_data.fillna(method='ffill').fillna(method='bfill')
-                    combined_data = combined_data.dropna(subset=['stock_id', 'time_idx', 'target_5'])
-                    
-                    # Simple feature selection
-                    feature_columns = [col for col in combined_data.columns 
-                                     if col not in ['stock_id', 'date', 'time_idx', 'target_5', 'target_5d', 'target_30d', 'target_90d']]
-                    
-                    time_varying_known = ['week_of_year', 'day_of_year_sin', 'day_of_year_cos', 'days_since_start', 'trading_day_of_month']
-                    time_varying_known = [col for col in time_varying_known if col in feature_columns]
-                    time_varying_unknown = [col for col in feature_columns if col not in time_varying_known]
-                    
-                    # Create training dataset
-                    training_data = combined_data[combined_data.time_idx <= combined_data.time_idx.quantile(0.8)]
-                    
-                    # Use the working normalizer we found
-                    self.training_dataset = TimeSeriesDataSet(
-                        training_data,
-                        time_idx="time_idx",
-                        target="target_5",
-                        group_ids=["stock_id"],
-                        max_encoder_length=30,
-                        max_prediction_length=5,
-                        static_categoricals=[],
-                        static_reals=[],
-                        time_varying_known_reals=time_varying_known,
-                        time_varying_unknown_reals=time_varying_unknown,
-                        target_normalizer=working_normalizer,  # Use the working one
-                        add_relative_time_idx=True,
-                        add_target_scales=True,
-                        add_encoder_length=True,
-                        allow_missing_timesteps=True
-                    )
-                    
-                    # Validation dataset
-                    validation_data = combined_data[combined_data.time_idx > combined_data.time_idx.quantile(0.8)]
-                    self.validation_dataset = TimeSeriesDataSet.from_dataset(
-                        self.training_dataset, validation_data, predict=True, stop_randomization=True
-                    )
-                    
-                    self.feature_config = {
-                        'static_categoricals': [],
-                        'static_reals': [],
-                        'time_varying_known_reals': time_varying_known,
-                        'time_varying_unknown_reals': time_varying_unknown
-                    }
-                    
-                    print(f"✅ Emergency patch: Dataset created successfully!")
-                    print(f"📊 Training samples: {len(self.training_dataset):,}")
-                    print(f"📊 Validation samples: {len(self.validation_dataset):,}")
-                    
-                except Exception as e:
-                    print(f"❌ Emergency patch failed: {e}")
-                    raise
-            
-            # Apply the monkey patch
-            tft_model.prepare_dataset = fixed_prepare_dataset.__get__(tft_model, EnhancedTFTModel)
-            
-            # Test the patched method
-            print(f"🧪 Testing emergency patched method...")
-            tft_model.prepare_dataset(enhanced_dataset)
-            
-            print(f"🎉 EMERGENCY PATCH SUCCESSFUL!")
-            print(f"✅ TFT Enhanced dataset preparation now works")
-            
-            # Now test training
-            print(f"🚀 Testing training with patched method...")
-            results = tft_model.train(
-                max_epochs=5,  # Quick test
-                batch_size=16,
-                learning_rate=0.001,
-                save_dir="models/emergency_test"
-            )
-            
-            if 'error' not in results:
-                print(f"🎉 COMPLETE SUCCESS! TFT Enhanced training works!")
-                return True
-            else:
-                print(f"❌ Training still failed: {results.get('error')}")
+        # Test Lightning import compatibility
+        try:
+            import lightning.pytorch as pl
+            lightning_version = pl.__version__
+            lightning_style = "lightning.pytorch"
+        except ImportError:
+            try:
+                import pytorch_lightning as pl
+                lightning_version = pl.__version__
+                lightning_style = "pytorch_lightning"
+            except ImportError:
+                print("   ❌ No Lightning installation found")
                 return False
         
-        else:
-            print(f"❌ Could not find working normalizer approach")
+        # Test pytorch-forecasting
+        try:
+            import pytorch_forecasting as pf
+            pf_version = pf.__version__
+        except ImportError:
+            print("   ❌ pytorch-forecasting not installed")
             return False
-            
+        
+        print(f"   📦 Lightning: {lightning_version} ({lightning_style})")
+        print(f"   📦 PyTorch Forecasting: {pf_version}")
+        
+        # Check for known compatibility issues
+        issues = []
+        if lightning_version.startswith('2.') and 'pytorch_lightning' in lightning_style:
+            issues.append("Lightning 2.x detected but using old import style")
+        
+        if lightning_version.startswith('1.') and 'lightning.pytorch' in lightning_style:
+            issues.append("Lightning 1.x detected but using new import style")
+        
+        if issues:
+            print("   ⚠️ Compatibility issues detected:")
+            for issue in issues:
+                print(f"      - {issue}")
+            print("   💡 Try: pip install pytorch-lightning==1.9.* pytorch-forecasting")
+        else:
+            print("   ✅ Version compatibility looks good")
+        
+        return len(issues) == 0
+        
     except Exception as e:
-        print(f"❌ Emergency patch failed: {e}")
-        traceback.print_exc()
+        print(f"   ❌ Version check failed: {e}")
+        return False
+
+def test_dataset_loading():
+    """Test dataset loading"""
+    print("🧪 Testing dataset loading...")
+    try:
+        from models import EnhancedDataLoader
+        
+        # Check if data exists
+        data_dir = Path("data/model_ready")
+        if not data_dir.exists():
+            print("   ⚠️ Data directory not found - run data_prep.py first")
+            return False
+        
+        # Try loading datasets
+        loader = EnhancedDataLoader()
+        
+        # Test baseline
+        baseline_files = list(data_dir.glob("baseline_*.csv"))
+        if baseline_files:
+            try:
+                baseline_dataset = loader.load_dataset('baseline')
+                print(f"   ✅ Baseline loaded: {len(baseline_dataset['selected_features'])} features")
+            except Exception as e:
+                print(f"   ⚠️ Baseline loading failed: {e}")
+        
+        # Test enhanced
+        enhanced_files = list(data_dir.glob("enhanced_*.csv"))
+        if enhanced_files:
+            try:
+                enhanced_dataset = loader.load_dataset('enhanced')
+                print(f"   ✅ Enhanced loaded: {len(enhanced_dataset['selected_features'])} features")
+                
+                # Check for sentiment features
+                sentiment_features = enhanced_dataset['feature_analysis'].get('sentiment_features', [])
+                print(f"   🎭 Sentiment features: {len(sentiment_features)}")
+                
+            except Exception as e:
+                print(f"   ⚠️ Enhanced loading failed: {e}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"   ❌ Dataset loading test failed: {e}")
         return False
 
 def main():
-    """Main execution"""
+    """Run all tests"""
+    print("🧪 RUNNING TFT FIXES VALIDATION TESTS")
+    print("=" * 50)
     
-    print("🚀 Starting targeted TFT fix...")
+    tests = [
+        ("Imports", test_imports),
+        ("Signal Handlers", test_signal_handlers),
+        ("Version Compatibility", test_version_compatibility),
+        ("Dataset Loading", test_dataset_loading)
+    ]
     
-    success = apply_emergency_patch()
+    results = {}
+    for test_name, test_func in tests:
+        try:
+            results[test_name] = test_func()
+        except Exception as e:
+            print(f"❌ Test {test_name} crashed: {e}")
+            results[test_name] = False
+        print()
     
-    if success:
-        print(f"\n🎉 SUCCESS! TFT Enhanced is now working!")
-        print(f"The emergency patch has been applied and tested.")
-        print(f"You can now run TFT Enhanced training normally.")
-        return 0
+    # Summary
+    print("📊 TEST RESULTS SUMMARY")
+    print("=" * 30)
+    
+    passed = sum(results.values())
+    total = len(results)
+    
+    for test_name, result in results.items():
+        status = "✅ PASS" if result else "❌ FAIL"
+        print(f"   {test_name}: {status}")
+    
+    print(f"\\nOverall: {passed}/{total} tests passed")
+    
+    if passed == total:
+        print("🎉 All tests passed! TFT fixes are working correctly.")
+        print("🚀 Ready to run full training with: python src/models.py")
     else:
-        print(f"\n❌ Emergency patch failed")
-        print(f"Manual code inspection may be required")
-        return 1
+        print("⚠️ Some tests failed. Check the output above for issues.")
+        print("📝 You may need to:")
+        print("   1. Run data_prep.py if dataset loading failed")
+        print("   2. Check package versions if compatibility failed")
+        print("   3. Review the applied fixes if imports failed")
+    
+    return passed == total
 
 if __name__ == "__main__":
-    exit_code = main()
-    sys.exit(exit_code)
+    success = main()
+    sys.exit(0 if success else 1)
+'''
+    
+    test_script_path = Path("test_tft_fixes.py")
+    with open(test_script_path, 'w', encoding='utf-8') as f:
+        f.write(test_script)
+    
+    print(f"✅ Test script created: {test_script_path}")
+    print("🧪 Run with: python test_tft_fixes.py")
+
+def main():
+    """Main execution"""
+    print("🔧 QUICK TFT FIXES APPLICATION")
+    print("=" * 40)
+    print("This script will apply critical fixes to resolve TFT training issues:")
+    print("1. Fix 'robust' transformation error")
+    print("2. Fix Lightning module compatibility")
+    print("3. Fix signal handling and exit() issues") 
+    print("4. Add version compatibility checks")
+    print("5. Add graceful shutdown handling")
+    print("=" * 40)
+    
+    # Confirm before proceeding
+    response = input("🤔 Apply fixes to src/models.py? (y/N): ").strip().lower()
+    if response not in ['y', 'yes']:
+        print("❌ Operation cancelled")
+        return False
+    
+    # Apply fixes
+    success = apply_critical_fixes()
+    
+    if success:
+        print("\\n🎉 FIXES APPLIED SUCCESSFULLY!")
+        
+        # Create test script
+        create_test_script()
+        
+        print("\\n🚀 NEXT STEPS:")
+        print("1. Run the test script: python test_tft_fixes.py")
+        print("2. If tests pass, try training: python src/models.py")
+        print("3. If issues persist, check the full test plan in the artifacts")
+        
+        return True
+    else:
+        print("\\n❌ FIXES FAILED TO APPLY")
+        print("Please check the error messages above and apply fixes manually")
+        return False
+
+if __name__ == "__main__":
+    main()

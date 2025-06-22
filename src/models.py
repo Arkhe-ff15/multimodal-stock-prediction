@@ -31,6 +31,8 @@ import os
 from pathlib import Path
 import warnings
 warnings.filterwarnings('ignore')
+import signal
+import time
 
 # Add src directory to Python path
 script_dir = Path(__file__).parent
@@ -42,9 +44,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
-from pytorch_lightning.loggers import TensorBoardLogger
+import lightning.pytorch as pl
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
+from lightning.pytorch.loggers import TensorBoardLogger
 import logging
 import json
 from datetime import datetime, timedelta
@@ -71,6 +73,38 @@ except ImportError:
 
 # ADD THIS CODE TO YOUR src/models.py FILE
 # LOCATION: Right after the import section (around line 67)
+
+
+
+def check_version_compatibility():
+    """Check package version compatibility"""
+    try:
+        import pytorch_lightning as pl
+        import pytorch_forecasting as pf
+        import torch
+        
+        logger.info("🔍 Checking version compatibility...")
+        logger.info(f"   PyTorch: {torch.__version__}")
+        logger.info(f"   Lightning: {pl.__version__}")
+        logger.info(f"   PyTorch Forecasting: {pf.__version__}")
+        
+        # Check for known incompatible versions
+        if pl.__version__.startswith('2.'):
+            logger.warning("⚠️ Lightning 2.x detected - may have compatibility issues")
+        
+        return True
+    except Exception as e:
+        logger.error(f"❌ Version compatibility check failed: {e}")
+        return False
+
+def setup_signal_handlers():
+    """Setup graceful shutdown handlers"""
+    def signal_handler(signum, frame):
+        logger.info(f"🛑 Received signal {signum}, attempting graceful shutdown...")
+        raise KeyboardInterrupt("Training interrupted by user")
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
 class ModelTrainingError(Exception):
     """Custom exception for model training failures"""
@@ -1131,11 +1165,7 @@ class EnhancedTFTModel:
                     static_reals=feature_config.get('static_reals', []),
                     time_varying_known_reals=feature_config.get('time_varying_known_reals', []),
                     time_varying_unknown_reals=feature_config.get('time_varying_unknown_reals', []),
-                    target_normalizer=GroupNormalizer(
-                        groups=['symbol'],
-                        transformation="softplus",  # More robust than softplus
-                        center=True
-                    ),
+                    target_normalizer=GroupNormalizer(groups=['symbol'],transformation="softplus",center=True),
                     add_relative_time_idx=True,
                     add_target_scales=True,
                     allow_missing_timesteps=True,
@@ -1283,10 +1313,19 @@ class EnhancedTFTModel:
             )
             
             # Enhanced training execution with monitoring
+            setup_signal_handlers()  # Setup graceful shutdown
             start_time = datetime.now()
             
             try:
                 logger.info(f"   🚀 Starting TFT training...")
+                # FIX: Ensure model is Lightning compatible
+
+                if not isinstance(self.model, pl.LightningModule):
+
+                    raise ModelTrainingError(f"Model is not a LightningModule: {type(self.model)}")
+
+                
+
                 self.trainer.fit(self.model, train_dataloader, val_dataloader)
                 training_time = (datetime.now() - start_time).total_seconds()
                 
