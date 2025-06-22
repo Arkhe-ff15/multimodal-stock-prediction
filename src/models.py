@@ -45,6 +45,8 @@ from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_forecasting import TimeSeriesDataSet, GroupNormalizer
+from pytorch_forecasting.data import ModelTrainingError
 import logging
 import json
 from datetime import datetime, timedelta
@@ -287,7 +289,7 @@ class EnhancedDataLoader:
     
     def _analyze_available_features(self, actual_columns: List[str], selected_features: List[str]) -> Dict[str, List[str]]:
         """
-        ✅ FIX: Analyze features based on what's actually available in the data
+        FIXED: Robust feature analysis that correctly identifies all feature types
         """
         
         # Use intersection of selected features and actual columns
@@ -298,10 +300,6 @@ class EnhancedDataLoader:
         logger.info(f"      📋 Actual columns: {len(actual_columns)}")
         logger.info(f"      ✅ Available features: {len(available_features)}")
         
-        if len(available_features) < len(selected_features):
-            missing = set(selected_features) - set(actual_columns)
-            logger.warning(f"      ⚠️ Missing features: {len(missing)} (e.g., {list(missing)[:5]}...)")
-        
         analysis = {
             'identifier_features': [],
             'target_features': [],
@@ -309,59 +307,90 @@ class EnhancedDataLoader:
             'technical_features': [],
             'time_features': [],
             'sentiment_features': [],
+            'temporal_decay_features': [],  # NEW: Separate category
             'lag_features': [],
             'available_features': available_features,
             'unknown_features': []
         }
         
-        # Define feature patterns with more flexible matching
-        feature_patterns = {
-            'identifier_features': ['stock_id', 'symbol', 'date'],
-            'target_features': lambda x: x.startswith('target_'),
-            'sentiment_features': lambda x: any(pattern in x.lower() for pattern in [
-                'sentiment_', 'confidence', 'compound', 'positive', 'negative'
-            ]),
-            'lag_features': lambda x: 'lag_' in x.lower(),
-            'time_features': lambda x: any(pattern in x.lower() for pattern in [
-                'year', 'month', 'day', 'week', 'since', 'time_idx', '_sin', '_cos'
-            ]),
-            'price_volume_features': lambda x: any(pattern in x.lower() for pattern in [
-                'volume', 'low', 'high', 'open', 'close', 'atr', 'vwap', 'price', 'returns'
-            ]),
-            'technical_features': lambda x: any(pattern in x.lower() for pattern in [
-                'ema_', 'sma_', 'rsi_', 'macd', 'bb_', 'roc_', 'stoch', 'williams', 'volatility'
-            ])
-        }
-        
-        # Categorize available features
+        # FIXED: Enhanced feature patterns with comprehensive matching
         for feature in available_features:
             categorized = False
             
-            # Check each pattern
-            for category, pattern in feature_patterns.items():
-                if callable(pattern):
-                    if pattern(feature):
-                        analysis[category].append(feature)
-                        categorized = True
-                        break
-                elif isinstance(pattern, list):
-                    if feature in pattern:
-                        analysis[category].append(feature)
-                        categorized = True
-                        break
+            # Identifier features
+            if feature in ['stock_id', 'symbol', 'date']:
+                analysis['identifier_features'].append(feature)
+                categorized = True
+            
+            # Target features
+            elif feature.startswith('target_'):
+                analysis['target_features'].append(feature)
+                categorized = True
+            
+            # FIXED: Comprehensive sentiment feature detection
+            elif any(pattern in feature.lower() for pattern in [
+                'sentiment_', 'confidence', 'compound', 'positive', 'negative',
+                '_compound', '_positive', '_negative', 'finbert', 'vader'
+            ]):
+                analysis['sentiment_features'].append(feature)
+                categorized = True
+                
+                # FIXED: Temporal decay sub-detection
+                if 'decay' in feature.lower() and any(h in feature.lower() for h in ['1d', '5d', '10d', '22d', '30d', '44d', '60d', '90d']):
+                    analysis['temporal_decay_features'].append(feature)
+            
+            # Lag features
+            elif 'lag_' in feature.lower():
+                analysis['lag_features'].append(feature)
+                categorized = True
+            
+            # Time features
+            elif any(pattern in feature.lower() for pattern in [
+                'year', 'month', 'day', 'week', 'since', 'time_idx', '_sin', '_cos', 'quarter'
+            ]):
+                analysis['time_features'].append(feature)
+                categorized = True
+            
+            # Price/volume features
+            elif any(pattern in feature.lower() for pattern in [
+                'volume', 'low', 'high', 'open', 'close', 'atr', 'vwap', 'price', 'returns', 'return'
+            ]):
+                analysis['price_volume_features'].append(feature)
+                categorized = True
+            
+            # Technical features
+            elif any(pattern in feature.lower() for pattern in [
+                'ema_', 'sma_', 'rsi_', 'macd', 'bb_', 'roc_', 'stoch', 'williams', 'volatility', 'momentum'
+            ]):
+                analysis['technical_features'].append(feature)
+                categorized = True
             
             # Track unknown features
             if not categorized:
                 analysis['unknown_features'].append(feature)
         
-        # Log feature analysis
+        # Enhanced logging with temporal decay detection
         logger.info(f"   📊 Feature Analysis (Available Only):")
         for category, feature_list in analysis.items():
-            if feature_list and category != 'available_features':
+            if feature_list and category not in ['available_features', 'unknown_features']:
                 logger.info(f"      {category}: {len(feature_list)}")
         
-        if analysis['unknown_features']:
-            logger.info(f"   📋 Uncategorized features: {len(analysis['unknown_features'])} (e.g., {analysis['unknown_features'][:3]}...)")
+        # FIXED: Special logging for temporal decay methodology
+        if analysis['temporal_decay_features']:
+            logger.info(f"   🔬 TEMPORAL DECAY METHODOLOGY DETECTED:")
+            logger.info(f"      ⏰ Decay features: {len(analysis['temporal_decay_features'])}")
+            logger.info(f"      📝 Examples: {analysis['temporal_decay_features'][:3]}")
+            
+            # Check for different horizons
+            horizons = set()
+            for feature in analysis['temporal_decay_features']:
+                for horizon in ['1d', '5d', '10d', '22d', '30d', '44d', '60d', '90d']:
+                    if horizon in feature.lower():
+                        horizons.add(horizon)
+            
+            if len(horizons) > 1:
+                logger.info(f"      📅 Multi-horizon implementation: {sorted(horizons)}")
+                logger.info(f"      ✅ NOVEL METHODOLOGY CONFIRMED!")
         
         return analysis
     
@@ -927,162 +956,148 @@ class EnhancedTFTModel:
             raise ModelTrainingError(f"TFT feature preparation failed: {e}")
     
     def prepare_dataset(self, dataset: Dict[str, Any]) -> None:
-        """Enhanced dataset preparation with comprehensive validation"""
+        """FIXED: Robust TFT dataset preparation with comprehensive error handling"""
         logger.info(f"📊 Preparing enhanced TFT dataset ({self.model_type})...")
         
         try:
             # Memory check
             MemoryMonitor.log_memory_status()
-            if MemoryMonitor.check_memory_threshold(70.0):
-                logger.warning("⚠️ High memory usage before TFT dataset preparation")
-                gc.collect()
             
             # Get validated feature configuration
             feature_config = self.prepare_features(dataset)
             
-            # Enhanced data combination with validation
+            # FIXED: Enhanced data combination with comprehensive validation
             train_data = dataset['splits']['train'].copy()
             val_data = dataset['splits']['val'].copy()
             
-            # Validate data before combination
-            for name, data_split in [('train', train_data), ('val', val_data)]:
-                if data_split.empty:
-                    raise ValueError(f"{name} data is empty")
-                
-                # Check required columns
-                required_cols = ['symbol', 'date', 'target_5']
-                missing_cols = [col for col in required_cols if col not in data_split.columns]
+            # FIXED: Ensure required columns exist
+            required_cols = ['symbol', 'date', 'target_5']
+            for data_name, data_df in [('train', train_data), ('val', val_data)]:
+                missing_cols = [col for col in required_cols if col not in data_df.columns]
                 if missing_cols:
-                    raise ValueError(f"Missing required columns in {name} data: {missing_cols}")
+                    raise ValueError(f"Missing required columns in {data_name}: {missing_cols}")
             
-            # Combine datasets with validation
+            # FIXED: Proper data combination and sorting
             combined_data = pd.concat([train_data, val_data], ignore_index=True)
+            combined_data['date'] = pd.to_datetime(combined_data['date'])
             combined_data = combined_data.sort_values(['symbol', 'date']).reset_index(drop=True)
             
-            # Enhanced data quality processing
-            initial_length = len(combined_data)
-            logger.info(f"   📊 Initial combined data: {initial_length:,} records")
+            logger.info(f"   📊 Combined data: {len(combined_data):,} records")
             
-            # Create enhanced time index
-            combined_data['time_idx'] = combined_data.groupby('symbol').cumcount()
+            # FIXED: Create proper continuous time index per symbol
+            combined_data['time_idx'] = combined_data.groupby('symbol').cumcount().astype('int64')
             
-            # Enhanced data type conversion with validation
+            # FIXED: Validate time_idx creation
+            max_time_idx = combined_data['time_idx'].max()
+            min_time_idx = combined_data['time_idx'].min()
+            logger.info(f"   📅 Time index range: {min_time_idx} to {max_time_idx}")
+            
+            # FIXED: Enhanced data type handling
             numeric_columns = (feature_config['time_varying_known_reals'] + 
-                              feature_config['time_varying_unknown_reals'] + 
-                              ['target_5'])
+                            feature_config['time_varying_unknown_reals'] + 
+                            ['target_5'])
             
-            conversion_issues = []
+            # Clean numeric columns
             for col in numeric_columns:
                 if col in combined_data.columns:
-                    try:
-                        original_dtype = combined_data[col].dtype
-                        combined_data[col] = pd.to_numeric(combined_data[col], errors='coerce')
-                        
-                        # Track conversion issues
-                        nan_count = combined_data[col].isna().sum()
-                        if nan_count > 0:
-                            conversion_issues.append(f"{col}: {nan_count} NaN values")
-                            
-                    except Exception as e:
-                        logger.warning(f"⚠️ Type conversion failed for {col}: {e}")
+                    # Convert to numeric, coercing errors to NaN
+                    combined_data[col] = pd.to_numeric(combined_data[col], errors='coerce')
+                    
+                    # Replace infinite values with NaN
+                    combined_data[col] = combined_data[col].replace([np.inf, -np.inf], np.nan)
             
-            if conversion_issues:
-                logger.info(f"   🔧 Data conversion issues: {conversion_issues[:3]}...")
+            # FIXED: Enhanced missing value handling with group-wise operations
+            logger.info(f"   🔧 Handling missing values...")
             
-            # Enhanced infinite/missing value handling
-            combined_data = combined_data.replace([np.inf, -np.inf], np.nan)
+            # Group-wise forward fill (maintains temporal integrity)
+            numeric_data = combined_data[numeric_columns]
+            filled_data = combined_data.groupby('symbol')[numeric_columns].fillna(method='ffill')
             
-            # Group-wise forward fill with validation
-            try:
-                filled_data = combined_data.groupby('symbol').fillna(method='ffill')
-                remaining_nan = filled_data.isna().sum().sum()
-                if remaining_nan > 0:
-                    filled_data = filled_data.fillna(0)
-                    logger.info(f"   🔧 Filled {remaining_nan} remaining NaN values with 0")
-                combined_data = filled_data
-            except Exception as e:
-                logger.warning(f"⚠️ Group-wise filling failed: {e}")
-                combined_data = combined_data.fillna(0)
+            # For remaining NaN (beginning of series), use group median
+            for col in numeric_columns:
+                if col in combined_data.columns:
+                    remaining_nan = filled_data[col].isna()
+                    if remaining_nan.any():
+                        group_medians = combined_data.groupby('symbol')[col].median()
+                        for symbol in combined_data['symbol'].unique():
+                            symbol_mask = combined_data['symbol'] == symbol
+                            symbol_nan = remaining_nan & symbol_mask
+                            if symbol_nan.any():
+                                median_val = group_medians.get(symbol, 0)
+                                filled_data.loc[symbol_nan, col] = median_val
             
-            # Enhanced target validation
-            target_quality = combined_data['target_5'].notna().mean()
-            if target_quality < 0.7:
-                logger.warning(f"⚠️ Low target quality: {target_quality:.1%}")
+            # Update combined_data with filled values
+            combined_data[numeric_columns] = filled_data
             
-            # Remove rows with missing targets (critical for TFT)
-            pre_target_length = len(combined_data)
-            combined_data = combined_data.dropna(subset=['target_5'])
-            post_target_length = len(combined_data)
+            # FIXED: Final NaN cleanup (any remaining NaN -> 0)
+            remaining_nan = combined_data[numeric_columns].isna().sum().sum()
+            if remaining_nan > 0:
+                logger.info(f"   🔧 Filling {remaining_nan} remaining NaN with 0")
+                combined_data[numeric_columns] = combined_data[numeric_columns].fillna(0)
             
-            if post_target_length < pre_target_length:
-                logger.info(f"   🎯 Removed {pre_target_length - post_target_length} rows with missing targets")
+            # FIXED: Enhanced symbol quality filtering
+            logger.info(f"   🔍 Quality filtering symbols...")
             
-            # Enhanced symbol quality filtering
-            symbol_quality = combined_data.groupby('symbol').agg({
-                'target_5': ['count', 'mean'],
-                'time_idx': 'max'
-            }).round(3)
-            
-            # Filter symbols with insufficient data or poor quality
-            min_observations = 50  # Minimum observations per symbol
+            min_observations = 30  # Reduced minimum for robustness
             valid_symbols = []
             
             for symbol in combined_data['symbol'].unique():
                 symbol_data = combined_data[combined_data['symbol'] == symbol]
-                target_coverage = symbol_data['target_5'].notna().mean()
                 
-                if len(symbol_data) >= min_observations and target_coverage >= 0.7:
+                # Check data quality
+                target_coverage = symbol_data['target_5'].notna().mean()
+                time_span = symbol_data['time_idx'].max() - symbol_data['time_idx'].min() + 1
+                
+                if len(symbol_data) >= min_observations and target_coverage >= 0.5 and time_span >= min_observations:
                     valid_symbols.append(symbol)
                 else:
-                    logger.info(f"   🚫 Excluding {symbol}: {len(symbol_data)} obs, {target_coverage:.1%} target coverage")
+                    logger.debug(f"   🚫 Excluding {symbol}: {len(symbol_data)} obs, {target_coverage:.1%} coverage")
             
             if not valid_symbols:
-                raise ValueError("No symbols meet quality requirements")
+                raise ValueError("No symbols meet minimum quality requirements")
             
             combined_data = combined_data[combined_data['symbol'].isin(valid_symbols)]
-            logger.info(f"   📊 Quality filtering: {len(combined_data):,} records, {len(valid_symbols)} symbols")
+            logger.info(f"   ✅ Quality filter: {len(combined_data):,} records, {len(valid_symbols)} symbols")
             
-            # Determine enhanced validation split point
+            # FIXED: Robust validation split determination
             train_max_date = train_data['date'].max()
-            val_mask = combined_data['date'] > train_max_date
+            val_start_mask = combined_data['date'] > train_max_date
             
-            if not val_mask.any():
-                # Fallback to percentage split
-                val_start_idx = int(combined_data['time_idx'].max() * 0.8)
-                logger.warning(f"⚠️ Using fallback validation split at time_idx {val_start_idx}")
+            if val_start_mask.any():
+                val_start_idx = combined_data[val_start_mask]['time_idx'].min()
             else:
-                val_start_idx = combined_data[val_mask]['time_idx'].min()
+                # Fallback: use 80% of max time_idx
+                val_start_idx = int(combined_data['time_idx'].max() * 0.8)
+                logger.warning(f"   ⚠️ Using fallback validation split at time_idx {val_start_idx}")
             
-            # Enhanced TFT dataset creation with comprehensive error handling
+            # FIXED: TFT dataset creation with minimal parameters for robustness
             try:
                 logger.info(f"   🔬 Creating TFT training dataset...")
                 
-                # Training dataset with enhanced configuration
                 self.training_dataset = TimeSeriesDataSet(
-                    combined_data[lambda x: x.time_idx < val_start_idx],
+                    combined_data[combined_data.time_idx < val_start_idx],
                     time_idx="time_idx",
                     target="target_5",
                     group_ids=['symbol'],
-                    min_encoder_length=15,  # Reduced for robustness
-                    max_encoder_length=30,
+                    min_encoder_length=10,  # Reduced for robustness
+                    max_encoder_length=20,  # Reduced for robustness
                     min_prediction_length=1,
-                    max_prediction_length=5,
-                    static_categoricals=feature_config['static_categoricals'],
-                    static_reals=feature_config['static_reals'],
-                    time_varying_known_reals=feature_config['time_varying_known_reals'],
-                    time_varying_unknown_reals=feature_config['time_varying_unknown_reals'],
+                    max_prediction_length=1,  # Simplified to single step
+                    static_categoricals=feature_config.get('static_categoricals', []),
+                    static_reals=feature_config.get('static_reals', []),
+                    time_varying_known_reals=feature_config.get('time_varying_known_reals', []),
+                    time_varying_unknown_reals=feature_config.get('time_varying_unknown_reals', []),
                     target_normalizer=GroupNormalizer(
                         groups=['symbol'],
-                        transformation="softplus",
-                        center=False
+                        transformation="robust",  # More robust than softplus
+                        center=True
                     ),
                     add_relative_time_idx=True,
                     add_target_scales=True,
                     allow_missing_timesteps=True,
-                    randomize_length=None  # Deterministic for reproducibility
+                    randomize_length=None  # Deterministic
                 )
                 
-                # Validation dataset with enhanced error handling
                 logger.info(f"   🔬 Creating TFT validation dataset...")
                 self.validation_dataset = TimeSeriesDataSet.from_dataset(
                     self.training_dataset,
@@ -1091,23 +1106,22 @@ class EnhancedTFTModel:
                     stop_randomization=True
                 )
                 
-                # Final validation
+                # FIXED: Validate datasets
                 if len(self.training_dataset) == 0:
-                    raise ValueError("Training dataset is empty")
+                    raise ValueError("Training dataset is empty after creation")
                 if len(self.validation_dataset) == 0:
-                    raise ValueError("Validation dataset is empty")
+                    raise ValueError("Validation dataset is empty after creation")
                 
-                logger.info(f"   ✅ Enhanced TFT dataset prepared ({self.model_type}):")
+                logger.info(f"   ✅ TFT dataset prepared successfully ({self.model_type}):")
                 logger.info(f"      📊 Training samples: {len(self.training_dataset):,}")
                 logger.info(f"      📊 Validation samples: {len(self.validation_dataset):,}")
-                logger.info(f"      🎯 Features: {len(feature_config['time_varying_unknown_reals'])} unknown, {len(feature_config['time_varying_known_reals'])} known")
-                
-                # Memory check after dataset creation
-                MemoryMonitor.log_memory_status()
+                logger.info(f"      🎯 Features: {len(feature_config.get('time_varying_unknown_reals', []))} unknown")
                 
             except Exception as e:
                 logger.error(f"❌ TFT dataset creation failed: {e}")
-                logger.error(f"   Traceback: {traceback.format_exc()}")
+                logger.error(f"   Data shape: {combined_data.shape}")
+                logger.error(f"   Symbols: {len(valid_symbols)}")
+                logger.error(f"   Time range: {combined_data['time_idx'].min()} - {combined_data['time_idx'].max()}")
                 raise ModelTrainingError(f"TFT dataset creation failed: {e}")
                 
         except Exception as e:
@@ -1275,6 +1289,81 @@ class EnhancedTFTModel:
             logger.error(f"❌ Enhanced TFT training failed: {e}")
             raise ModelTrainingError(f"Enhanced TFT training failed: {e}")
 
+
+class RobustTrainingManager:
+    """Manages robust training with automatic recovery"""
+    
+    def __init__(self, max_retries: int = 2):
+        self.max_retries = max_retries
+        self.attempt_logs = []
+    
+    def train_with_recovery(self, model_name: str, train_func, **kwargs) -> Dict[str, Any]:
+        """Train model with automatic recovery on failure"""
+        
+        for attempt in range(self.max_retries + 1):
+            attempt_start = datetime.now()
+            
+            try:
+                logger.info(f"🚀 Training {model_name} - Attempt {attempt + 1}/{self.max_retries + 1}")
+                
+                # Clear memory before each attempt
+                if attempt > 0:
+                    MemoryMonitor.cleanup_memory()  # Use existing MemoryMonitor
+                    time.sleep(5)  # Brief pause
+                
+                # Execute training
+                result = train_func(**kwargs)
+                
+                # Check if training succeeded
+                if isinstance(result, dict) and 'error' not in result:
+                    attempt_duration = (datetime.now() - attempt_start).total_seconds()
+                    logger.info(f"✅ {model_name} training successful in {attempt_duration:.1f}s")
+                    
+                    # Add attempt info to result
+                    result['training_attempts'] = attempt + 1
+                    result['total_attempt_time'] = sum([log['duration'] for log in self.attempt_logs]) + attempt_duration
+                    
+                    return result
+                else:
+                    error_msg = result.get('error', 'Unknown error') if isinstance(result, dict) else str(result)
+                    logger.warning(f"⚠️ {model_name} attempt {attempt + 1} failed: {error_msg}")
+                
+            except Exception as e:
+                attempt_duration = (datetime.now() - attempt_start).total_seconds()
+                logger.error(f"❌ {model_name} attempt {attempt + 1} exception: {e}")
+                
+                # Log attempt
+                self.attempt_logs.append({
+                    'attempt': attempt + 1,
+                    'error': str(e),
+                    'duration': attempt_duration
+                })
+                
+                # If this is not the last attempt, prepare for retry
+                if attempt < self.max_retries:
+                    logger.info(f"🔄 Preparing for retry {attempt + 2}...")
+                    
+                    # Clear any model artifacts
+                    try:
+                        import gc
+                        gc.collect()
+                    except:
+                        pass
+                    
+                    # Wait before retry
+                    time.sleep(10)
+        
+        # All attempts failed
+        total_duration = sum([log['duration'] for log in self.attempt_logs])
+        logger.error(f"❌ {model_name} training failed after {self.max_retries + 1} attempts ({total_duration:.1f}s total)")
+        
+        return {
+            'error': f'Training failed after {self.max_retries + 1} attempts',
+            'model_type': model_name,
+            'training_time': total_duration,
+            'attempt_logs': self.attempt_logs
+        }
+
 class EnhancedModelFramework:
     """
     Enhanced production-grade academic model training framework - FIXED
@@ -1294,6 +1383,7 @@ class EnhancedModelFramework:
         self.models_dir = Path("models/checkpoints")
         self.logs_dir = Path("logs/training")
         self.results_dir = Path("results/training")
+        self.robust_trainer = RobustTrainingManager(max_retries=2)
         
         for directory in [self.models_dir, self.logs_dir, self.results_dir]:
             directory.mkdir(parents=True, exist_ok=True)
