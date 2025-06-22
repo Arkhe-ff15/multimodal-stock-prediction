@@ -1658,11 +1658,12 @@ class EnhancedModelFramework:
                 
                 # Enhanced PyTorch Lightning trainer
                 trainer = pl.Trainer(
-                    max_epochs=100,
+                    max_epochs=30,
                     gradient_clip_val=0.5,
+                    gradient_clip_algorithm="norm",
                     accelerator="auto",
                     devices="auto",
-                    callbacks=[early_stop, checkpoint, lr_monitor],
+                    callbacks=[checkpoint, lr_monitor],
                     logger=TensorBoardLogger(str(self.logs_dir), name="lstm_baseline"),
                     enable_progress_bar=True,
                     deterministic=True,
