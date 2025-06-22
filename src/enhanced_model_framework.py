@@ -1,4 +1,3 @@
-# Create: src/enhanced_model_framework.py
 #!/usr/bin/env python3
 """
 Enhanced Model Framework - Main Entry Point for Academic Training
@@ -26,7 +25,8 @@ from evaluation import (
     ModelPredictor
 )
 
-from data_prep import AcademicDataPreparator
+# FIX: Correct class name import
+from data_prep import EnhancedAcademicDataPreparator
 
 # Export main components
 __all__ = [
@@ -38,7 +38,7 @@ __all__ = [
     'StatisticalTestSuite',
     'AcademicMetricsCalculator',
     'ModelPredictor',
-    'AcademicDataPreparator'
+    'EnhancedAcademicDataPreparator'  # FIX: Correct class name
 ]
 
 def main():
