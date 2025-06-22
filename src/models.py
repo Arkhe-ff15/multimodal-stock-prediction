@@ -1391,7 +1391,13 @@ class EnhancedTFTModel:
             
             logger.info(f"✅ Enhanced TFT training completed ({self.model_type})!")
             logger.info(f"   ⏱️ Training time: {training_time:.1f}s ({training_time/60:.1f}m)")
-            logger.info(f"   📉 Best validation loss: {results['best_val_loss']:.4f}")
+            best_val_loss = results.get('best_val_loss')
+            
+            if best_val_loss is not None:
+                logger.info(f"   📉 Best validation loss: {best_val_loss:.4f}")
+            else:
+                logger.info(f"   📉 Best validation loss: N/A (training interrupted)")
+                
             logger.info(f"   🔄 Epochs trained: {results['epochs_trained']}")
             logger.info(f"   💾 Best checkpoint: {checkpoint.best_model_path}")
             
@@ -1788,7 +1794,11 @@ class EnhancedModelFramework:
             
             logger.info("✅ Enhanced LSTM Baseline training completed (FIXED)!")
             logger.info(f"   ⏱️ Training time: {training_time:.1f}s ({training_time/60:.1f}m)")
-            logger.info(f"   📉 Best validation loss: {results['best_val_loss']:.4f}")
+            best_val_loss = results.get('best_val_loss')
+            if best_val_loss is not None:
+                logger.info(f"   📉 Best validation loss: {best_val_loss:.4f}")
+            else:
+                logger.info(f"   📉 Best validation loss: N/A (training interrupted)")
             logger.info(f"   🔄 Epochs: {results['epochs_trained']}")
             logger.info(f"   🎯 Features used: {len(feature_cols)}")
             logger.info(f"   💾 Memory usage: +{memory_increase:.1f}GB")
