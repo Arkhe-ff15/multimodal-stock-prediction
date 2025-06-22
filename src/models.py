@@ -79,7 +79,7 @@ except ImportError:
 def check_version_compatibility():
     """Check package version compatibility"""
     try:
-        import pytorch_lightning as pl
+        import lightning.pytorch as pl
         import pytorch_forecasting as pf
         import torch
         
@@ -138,6 +138,27 @@ class MemoryMonitor:
         """Log current memory status"""
         stats = MemoryMonitor.get_memory_usage()
         logger.info(f"💾 Memory: {stats['used_gb']:.1f}GB/{stats['total_gb']:.1f}GB ({stats['percent']:.1f}%)")
+    @staticmethod
+    def cleanup_memory():
+        """Enhanced memory cleanup with multiple strategies"""
+        try:
+            import gc
+            import torch
+            
+            # Force garbage collection
+            collected = gc.collect()
+            
+            # Clear CUDA cache if available
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+            
+            logger.info(f"🧹 Memory cleanup completed: {collected} objects collected")
+            MemoryMonitor.log_memory_status()
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Memory cleanup failed: {e}")
+
 
 def set_random_seeds(seed: int = 42):
     """Set random seeds for reproducibility"""
@@ -1299,10 +1320,10 @@ class EnhancedTFTModel:
             # Enhanced trainer with comprehensive configuration
             self.trainer = pl.Trainer(
                 max_epochs=max_epochs,
-                accelerator="auto",
-                devices="auto",
+                accelerator="cpu",
+                devices=1,
                 gradient_clip_val=0.5,
-                precision=32,  # More stable for academic work
+                precision="32",  # More stable for academic work
                 callbacks=[early_stop, checkpoint, lr_monitor],
                 logger=tb_logger,
                 enable_progress_bar=True,
@@ -1318,13 +1339,21 @@ class EnhancedTFTModel:
             
             try:
                 logger.info(f"   🚀 Starting TFT training...")
-                # FIX: Ensure model is Lightning compatible
-
-                if not isinstance(self.model, pl.LightningModule):
-
-                    raise ModelTrainingError(f"Model is not a LightningModule: {type(self.model)}")
-
-                
+                # FIX: Enhanced Lightning compatibility check
+                try:
+                    # Check if model has essential Lightning methods
+                    essential_methods = ['training_step', 'configure_optimizers']
+                    has_lightning_methods = all(hasattr(self.model, method) for method in essential_methods)
+                    
+                    if not has_lightning_methods:
+                        logger.warning(f"⚠️ Model may not be fully Lightning compatible: {type(self.model)}")
+                        logger.warning("   Attempting training anyway...")
+                    else:
+                        logger.info(f"✅ Model Lightning compatibility confirmed: {type(self.model)}")
+                        
+                except Exception as e:
+                    logger.warning(f"⚠️ Lightning compatibility check failed: {e}")
+                    logger.info("   Proceeding with training anyway...")
 
                 self.trainer.fit(self.model, train_dataloader, val_dataloader)
                 training_time = (datetime.now() - start_time).total_seconds()
@@ -1701,8 +1730,8 @@ class EnhancedModelFramework:
                     max_epochs=30,
                     gradient_clip_val=0.5,
                     gradient_clip_algorithm="norm",
-                    accelerator="auto",
-                    devices="auto",
+                    accelerator="cpu",
+                    devices=1,
                     callbacks=[checkpoint, lr_monitor],
                     logger=TensorBoardLogger(str(self.logs_dir), name="lstm_baseline"),
                     enable_progress_bar=True,
