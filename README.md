@@ -47,11 +47,11 @@ where λ > 0 and i represents time lag
 
 **Mathematical Formulation**:
 ```
-λ_5d > λ_30d > λ_90d
+λ_5d > λ_22d > λ_90d
 ```
 
-**Null Hypothesis (H₂₀)**: λ_5d = λ_30d = λ_90d (uniform decay across horizons)
-**Alternative Hypothesis (H₂ₐ)**: λ_5d ≠ λ_30d ≠ λ_90d (horizon-specific optimization)
+**Null Hypothesis (H₂₀)**: λ_5d = λ_22d = λ_90d (uniform decay across horizons)
+**Alternative Hypothesis (H₂ₐ)**: λ_5d ≠ λ_22d ≠ λ_90d (horizon-specific optimization)
 
 ### **H3: Enhanced Forecasting Performance**
 **Hypothesis**: TFT models enhanced with temporal decay sentiment features significantly outperform baseline technical indicator models across multiple performance metrics.
@@ -83,7 +83,7 @@ sentiment_weighted = Σ(sentiment_i * exp(-λ_h * age_i)) / Σ(exp(-λ_h * age_i
 - `sentiment_i`: FinBERT sentiment score at time i
 - `λ_h`: Horizon-specific decay parameter (optimized via cross-validation)
 - `age_i`: Time distance from current prediction point (in days)
-- `h`: Prediction horizon (5d, 10d, 30d, 60d, 90d)
+- `h`: Prediction horizon (5d, 10d, 22d, 60d, 90d)
 
 **Mathematical Properties:**
 - **Normalization**: Denominator ensures weighted average properties
@@ -94,7 +94,7 @@ sentiment_weighted = Σ(sentiment_i * exp(-λ_h * age_i)) / Σ(exp(-λ_h * age_i
 **Optimized Decay Parameters:**
 - `λ_5d`: 0.1 (fast decay: 50% weight after ~7 days)
 - `λ_10d`: 0.08 (moderate-fast decay: 50% weight after ~9 days)
-- `λ_30d`: 0.05 (moderate decay: 50% weight after ~14 days)  
+- `λ_22d`: 0.05 (moderate decay: 50% weight after ~14 days)  
 - `λ_60d`: 0.03 (moderate-slow decay: 50% weight after ~23 days)
 - `λ_90d`: 0.02 (slow decay: 50% weight after ~35 days)
 
@@ -320,7 +320,7 @@ Based on rigorous empirical validation across multiple market conditions:
 **H2: Horizon-Specific Decay Optimization**
 - **Test**: F-test for equality of decay parameters across horizons
 - **Expected Result**: Rejection of H₂₀ (p < 0.01)
-- **Evidence**: λ_5d > λ_30d > λ_90d with statistical significance
+- **Evidence**: λ_5d > λ_22d > λ_90d with statistical significance
 
 **H3: Enhanced Forecasting Performance**
 - **Test**: Diebold-Mariano test with HAC-robust standard errors
@@ -440,7 +440,7 @@ hypothesis_testing:
 - **Temporal Coverage**: 2018-2024 (6+ years of complete data)
 - **News Data**: FNSPID dataset (22GB+ financial news)
 - **Sentiment Analysis**: FinBERT (ProsusAI/finbert) with enhanced preprocessing
-- **Forecast Horizons**: 5, 10, 30, 60, 90 days
+- **Forecast Horizons**: 5, 10, 22, 60, 90 days
 
 ### Experimental Rigor
 - **Temporal Splits**: Academic-compliant train (70%), validation (20%), test (10%)

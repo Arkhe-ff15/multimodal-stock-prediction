@@ -1650,7 +1650,7 @@ class EnhancedModelFramework:
                 # Emergency fallback: use any numeric columns
                 train_data = dataset['splits']['train']
                 numeric_cols = train_data.select_dtypes(include=[np.number]).columns.tolist()
-                exclude_cols = ['stock_id', 'target_5', 'target_30', 'target_90']
+                exclude_cols = ['stock_id', 'target_5', 'target_22', 'target_90']
                 final_feature_cols = [col for col in numeric_cols if col not in exclude_cols][:20]  # Limit to 20
             
             if len(final_feature_cols) < 3:

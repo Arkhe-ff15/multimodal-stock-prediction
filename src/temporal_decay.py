@@ -11,7 +11,7 @@ All issues resolved:
 
 CORE INNOVATION: 
 sentiment_weighted = Σ(sentiment_i * exp(-λ_h * age_i)) / Σ(exp(-λ_h * age_i))
-Where λ_h is optimized per horizon h (5, 10, 30, 60, 90 days)
+Where λ_h is optimized per horizon h (5, 10, 22, 60, 90 days)
 """
 
 import sys
@@ -52,7 +52,7 @@ class AdvancedTemporalDecayProcessor:
         # Default decay parameters (will be optimized)
         self.decay_params = {
             5: 0.1,   # Fast decay: 50% weight after ~7 days
-            30: 0.05, # Medium decay: 50% weight after ~14 days
+            22: 0.05, # Medium decay: 50% weight after ~14 days
             90: 0.02  # Slow decay: 50% weight after ~35 days
         }
         
@@ -206,7 +206,7 @@ class AdvancedTemporalDecayProcessor:
             # Optimization bounds based on horizon
             if horizon <= 10:
                 bounds = (0.05, 0.3)  # Fast decay for short horizons
-            elif horizon <= 30:
+            elif horizon <= 22:
                 bounds = (0.02, 0.15)  # Medium decay
             else:
                 bounds = (0.01, 0.08)  # Slow decay for long horizons

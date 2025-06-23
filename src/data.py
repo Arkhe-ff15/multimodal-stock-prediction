@@ -1159,7 +1159,7 @@ if __name__ == "__main__":
         symbols=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'NFLX'],
         start_date='2018-01-01',  # ✅ CORRECTED TO 2018
         end_date='2024-01-31',
-        target_horizons=[5, 30, 90]
+        target_horizons=[5, 22, 90]
     )
     
     logger.info("🚀 Testing academic-grade dataset creation...")
