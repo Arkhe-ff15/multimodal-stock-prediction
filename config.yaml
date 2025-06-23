@@ -460,7 +460,7 @@ training:
       optimizer: 'AdamW'
       beta1: 0.9
       beta2: 0.999
-      eps: 1e-8
+      eps: 0.00000001
       amsgrad: false
     
     # Learning rate scheduling
@@ -469,7 +469,7 @@ training:
       mode: 'min'
       factor: 0.5
       patience: 15  # Conservative
-      min_lr: 1e-6
+      min_lr: 0.000001
       cooldown: 5
       
   # Data loading optimization
