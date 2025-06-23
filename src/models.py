@@ -570,7 +570,13 @@ class EnhancedDataLoader:
             raise ModelTrainingError("Feature inconsistency across splits")
         
         # Check for required columns
-        required_cols = ['stock_id', 'symbol', 'date', 'target_5']
+        base_required = ['stock_id', 'symbol', 'date'] 
+        target_cols = [col for col in splits['train'].columns if col.startswith('target_')]
+        if not target_cols:
+            raise ModelTrainingError("No target columns found")
+        
+        primary_target = target_cols[0]  # Use first available target
+        required_cols = base_required + [primary_target]
         missing_cols = [col for col in required_cols if col not in splits['train'].columns]
         if missing_cols:
             raise ModelTrainingError(f"Missing required columns: {missing_cols}")
@@ -581,10 +587,10 @@ class EnhancedDataLoader:
             if split_df.empty:
                 raise ModelTrainingError(f"{split_name} split is empty")
             
-            # Check target coverage
-            target_coverage = split_df['target_5'].notna().mean()
+            # Check target coverage using dynamic target
+            target_coverage = split_df[primary_target].notna().mean()
             if target_coverage < 0.7:
-                logger.warning(f"⚠️ Low target coverage in {split_name}: {target_coverage:.1%}")
+                logger.warning(f"⚠️ Low target coverage in {split_name} for {primary_target}: {target_coverage:.1%}")
             
             # Check for infinite values
             numeric_cols = split_df.select_dtypes(include=[np.number]).columns
@@ -1663,15 +1669,21 @@ class EnhancedModelFramework:
             
             # Enhanced dataset creation with validation
             try:
+                # AFTER:
+                # Use target_5 if available, otherwise first available target
+                available_targets = [col for col in dataset['splits']['train'].columns if col.startswith('target_')]
+                target_col = 'target_5' if 'target_5' in available_targets else available_targets[0]
+
                 train_dataset = EnhancedLSTMDataset(
-                    dataset['splits']['train'], feature_cols, 'target_5', sequence_length=30
+                    dataset['splits']['train'], feature_cols, target_col, sequence_length=30
                 )
                 val_dataset = EnhancedLSTMDataset(
-                    dataset['splits']['val'], feature_cols, 'target_5', sequence_length=30
+                    dataset['splits']['val'], feature_cols, target_col, sequence_length=30
                 )
                 
                 logger.info(f"   📊 Training sequences: {len(train_dataset):,}")
                 logger.info(f"   📊 Validation sequences: {len(val_dataset):,}")
+                logger.info(f"   🎯 Using target column: {target_col}")
                 
             except Exception as e:
                 raise ModelTrainingError(f"LSTM dataset creation failed: {e}")
