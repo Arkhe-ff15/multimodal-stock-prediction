@@ -1841,31 +1841,6 @@ jupyter notebook notebooks/01_financial_data_eda.ipynb
 jupyter notebook notebooks/02_model_training_analysis.ipynb
 ```
 
----
-
-## 🐛 Version History
-
-### v5.2 (December 2024) - Production Ready
-- ✅ Fixed TFT tensor shape compatibility with PyTorch Forecasting QuantileLoss
-- ✅ Enhanced SimpleTFTTrainer with robust shape handling
-- ✅ Added automatic tensor shape reconciliation
-- ✅ Improved debug logging for model training diagnostics
-- ✅ Unified training/validation logic for both TFT models
-- ✅ All models now training successfully
-
-### v5.1 (December 2024) - Enhanced Framework
-- ✅ Complete pipeline implementation
-- ✅ Enhanced feature selection with protection
-- ✅ Ticker validation system
-- ✅ Temporal decay implementation
-
-### v5.0 (December 2024) - Initial Release
-- ✅ Basic framework structure
-- ✅ Core model implementations
-- ✅ Statistical testing framework
-
----
-
 **Research Institution**: ESI SBA  
 **Research Group**: FF15  
 **Principal Investigator**: mni.diafi@esi-sba.dz  
