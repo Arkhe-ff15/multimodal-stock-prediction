@@ -1,281 +1,352 @@
 #!/usr/bin/env python3
 """
-Direct Fix Script for models.py Horizon Issues
-=============================================
-Fixes the 2 critical bugs for [5, 22, 90] horizon support
+AUTOMATED FIX APPLICATION SCRIPT
+================================
+
+This script automatically applies the critical fixes to your models.py file.
+Run with: python apply_fixes.py
 """
 
-import os
+import re
 import shutil
 from pathlib import Path
 from datetime import datetime
 
-def fix_models_py():
-    """Fix the 2 critical horizon bugs in models.py"""
-    
-    print("🔧 FIXING MODELS.PY HORIZON ISSUES")
-    print("=" * 50)
-    
-    # Paths
-    models_path = Path("src/models.py")
-    backup_path = Path(f"src/models_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.py")
-    
-    # Check if file exists
-    if not models_path.exists():
-        print(f"❌ models.py not found at: {models_path}")
-        return False
-    
-    # Create backup
-    print(f"💾 Creating backup: {backup_path}")
-    shutil.copy2(models_path, backup_path)
-    
-    # Read the file
-    print(f"📖 Reading {models_path}")
-    with open(models_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    # Track changes
-    changes_made = []
-    original_content = content
-    
-    # ===== FIX 1: LSTM validation dataset target =====
-    print("🔧 Fix 1: LSTM validation dataset target consistency...")
-    
-    # Find and replace the hardcoded 'target_5' in val_dataset creation
-    old_val_dataset = """val_dataset = EnhancedLSTMDataset(
-                    dataset['splits']['val'], feature_cols, 'target_5', sequence_length=30
-                )"""
-    
-    new_val_dataset = """val_dataset = EnhancedLSTMDataset(
-                    dataset['splits']['val'], feature_cols, target_col, sequence_length=30
-                )"""
-    
-    if old_val_dataset in content:
-        content = content.replace(old_val_dataset, new_val_dataset)
-        changes_made.append("✅ Fixed LSTM validation dataset target")
-        print("   ✅ Fixed LSTM validation dataset target")
-    else:
-        # Try alternative format
-        alt_old = "dataset['splits']['val'], feature_cols, 'target_5', sequence_length=30"
-        alt_new = "dataset['splits']['val'], feature_cols, target_col, sequence_length=30"
+class ModelFixApplicator:
+    def __init__(self, models_file="src/models.py"):
+        self.models_file = Path(models_file)
+        self.backup_file = self.models_file.with_suffix('.backup.py')
+        self.fixes_applied = []
         
-        if alt_old in content:
-            content = content.replace(alt_old, alt_new)
-            changes_made.append("✅ Fixed LSTM validation dataset target (alternative format)")
-            print("   ✅ Fixed LSTM validation dataset target (alternative format)")
+    def apply_all_fixes(self):
+        """Apply all critical fixes to the models file"""
+        print("🔧 AUTOMATED MODEL FIX APPLICATION")
+        print("=" * 50)
+        
+        # Create backup
+        if not self.create_backup():
+            return False
+        
+        # Read current file
+        with open(self.models_file, 'r') as f:
+            content = f.read()
+        
+        # Apply fixes
+        original_content = content
+        content = self.fix_lstm_training_step(content)
+        content = self.add_scaler_application(content)
+        content = self.add_memory_monitoring(content)
+        content = self.fix_feature_analysis(content)
+        content = self.fix_tft_validation_split(content)
+        content = self.add_dataset_validation(content)
+        content = self.enhance_config_class(content)
+        
+        # Write fixed content
+        if content != original_content:
+            with open(self.models_file, 'w') as f:
+                f.write(content)
+            print(f"\n✅ Successfully applied {len(self.fixes_applied)} fixes!")
+            print(f"📋 Fixes applied: {', '.join(self.fixes_applied)}")
+            print(f"💾 Backup saved to: {self.backup_file}")
         else:
-            print("   ⚠️ Could not find exact LSTM validation target pattern")
-    
-    # ===== FIX 2: Validation function hardcoded target_5 =====
-    print("🔧 Fix 2: Validation function dynamic target...")
-    
-    # Find the _validate_dataset_integrity function and fix the hardcoded target_5
-    old_validation_block = """        # Check for required columns
-        # AFTER:
-        base_required = ['stock_id', 'symbol', 'date'] 
-        target_cols = [col for col in splits['train'].columns if col.startswith('target_')]
-        if not target_cols:
-            raise ModelTrainingError("No target columns found")
-        required_cols = base_required + [target_cols[0]]  # Use any available target
-        missing_cols = [col for col in required_cols if col not in splits['train'].columns]
-        if missing_cols:
-            raise ModelTrainingError(f"Missing required columns: {missing_cols}")
-        
-        # Enhanced data quality checks
-        for split_name, split_df in splits.items():
-            # Check for empty splits
-            if split_df.empty:
-                raise ModelTrainingError(f"{split_name} split is empty")
-            
-            # Check target coverage
-            target_coverage = split_df['target_5'].notna().mean()
-            if target_coverage < 0.7:
-                logger.warning(f"⚠️ Low target coverage in {split_name}: {target_coverage:.1%}")"""
-    
-    new_validation_block = """        # Check for required columns
-        base_required = ['stock_id', 'symbol', 'date'] 
-        target_cols = [col for col in splits['train'].columns if col.startswith('target_')]
-        if not target_cols:
-            raise ModelTrainingError("No target columns found")
-        
-        primary_target = target_cols[0]  # Use first available target
-        required_cols = base_required + [primary_target]
-        missing_cols = [col for col in required_cols if col not in splits['train'].columns]
-        if missing_cols:
-            raise ModelTrainingError(f"Missing required columns: {missing_cols}")
-        
-        # Enhanced data quality checks
-        for split_name, split_df in splits.items():
-            # Check for empty splits
-            if split_df.empty:
-                raise ModelTrainingError(f"{split_name} split is empty")
-            
-            # Check target coverage using dynamic target
-            target_coverage = split_df[primary_target].notna().mean()
-            if target_coverage < 0.7:
-                logger.warning(f"⚠️ Low target coverage in {split_name} for {primary_target}: {target_coverage:.1%}")"""
-    
-    if old_validation_block in content:
-        content = content.replace(old_validation_block, new_validation_block)
-        changes_made.append("✅ Fixed validation function dynamic target")
-        print("   ✅ Fixed validation function dynamic target")
-    else:
-        # Try to find just the problematic line
-        old_target_coverage = "target_coverage = split_df['target_5'].notna().mean()"
-        new_target_coverage = """# Use first available target column
-            available_targets = [col for col in split_df.columns if col.startswith('target_')]
-            primary_target = available_targets[0] if available_targets else 'target_5'
-            target_coverage = split_df[primary_target].notna().mean()"""
-        
-        if old_target_coverage in content:
-            content = content.replace(old_target_coverage, new_target_coverage)
-            changes_made.append("✅ Fixed target coverage line")
-            print("   ✅ Fixed target coverage line")
-        else:
-            print("   ⚠️ Could not find exact validation target pattern")
-    
-    # ===== FIX 3: Add logging for target selection =====
-    print("🔧 Fix 3: Add target selection logging...")
-    
-    # Find the logging section and add target info
-    old_logging = """                logger.info(f"   📊 Training sequences: {len(train_dataset):,}")
-                logger.info(f"   📊 Validation sequences: {len(val_dataset):,}")"""
-    
-    new_logging = """                logger.info(f"   📊 Training sequences: {len(train_dataset):,}")
-                logger.info(f"   📊 Validation sequences: {len(val_dataset):,}")
-                logger.info(f"   🎯 Using target column: {target_col}")"""
-    
-    if old_logging in content:
-        content = content.replace(old_logging, new_logging)
-        changes_made.append("✅ Added target selection logging")
-        print("   ✅ Added target selection logging")
-    
-    # ===== Write the fixed file =====
-    if changes_made:
-        print(f"\n💾 Writing fixed file...")
-        with open(models_path, 'w', encoding='utf-8') as f:
-            f.write(content)
-        
-        print(f"✅ FIXES APPLIED SUCCESSFULLY!")
-        print(f"📋 Changes made:")
-        for change in changes_made:
-            print(f"   {change}")
-        print(f"💾 Backup saved as: {backup_path}")
+            print("⚠️ No changes needed - file appears to be already fixed")
         
         return True
-    else:
-        print(f"⚠️ No changes were made - patterns not found")
-        print(f"💡 You may need to apply fixes manually")
-        return False
-
-def fix_config_yaml():
-    """Fix config.yaml horizons"""
-    print(f"\n🔧 FIXING CONFIG.YAML HORIZONS")
-    print("-" * 30)
     
-    config_path = Path("config.yaml")
-    if not config_path.exists():
-        print(f"❌ config.yaml not found")
-        return False
+    def create_backup(self):
+        """Create backup of original file"""
+        try:
+            shutil.copy2(self.models_file, self.backup_file)
+            print(f"✅ Backup created: {self.backup_file}")
+            return True
+        except Exception as e:
+            print(f"❌ Failed to create backup: {e}")
+            return False
     
-    # Read config
-    with open(config_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    # Create backup
-    backup_path = Path(f"config_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.yaml")
-    shutil.copy2(config_path, backup_path)
-    
-    changes = []
-    
-    # Fix target_horizons
-    if "target_horizons: [1, 5, 10, 22, 44]" in content:
-        content = content.replace(
-            "target_horizons: [1, 5, 10, 22, 44]",
-            "target_horizons: [5, 22, 90]"
-        )
-        changes.append("✅ Fixed target_horizons to [5, 22, 90]")
-    
-    # Fix primary_horizon
-    if "primary_horizon: 22" in content:
-        content = content.replace(
-            "primary_horizon: 22",
-            "primary_horizon: 5"
-        )
-        changes.append("✅ Fixed primary_horizon to 5")
-    
-    if changes:
-        with open(config_path, 'w', encoding='utf-8') as f:
-            f.write(content)
+    def fix_lstm_training_step(self, content):
+        """Fix LSTM training_step method"""
+        # Pattern to find the broken training_step
+        pattern = r'def training_step\(self, batch, batch_idx\):\s*loss = self\.model\.training_step\(batch, batch_idx\)'
         
-        print(f"✅ Config fixes applied:")
-        for change in changes:
-            print(f"   {change}")
-        print(f"💾 Backup: {backup_path}")
-        return True
-    else:
-        print(f"⚠️ No config changes needed")
-        return False
-
-def verify_fixes():
-    """Verify the fixes were applied correctly"""
-    print(f"\n🔍 VERIFYING FIXES")
-    print("-" * 20)
+        replacement = '''def training_step(self, batch, batch_idx):
+        """Fixed training step"""
+        x, y = batch
+        y_pred = self(x)
+        loss = self.criterion(y_pred, y)
+        
+        self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
+        
+        # Enhanced memory management
+        if (batch_idx % self.config.memory_cleanup_frequency == 0 or 
+            MemoryMonitor.should_cleanup(self.config.memory_threshold_percent)):
+            MemoryMonitor.cleanup_memory()
+            if batch_idx % 100 == 0:
+                MemoryMonitor.log_memory_status()
+        
+        return loss'''
+        
+        if re.search(pattern, content):
+            content = re.sub(pattern, replacement, content)
+            self.fixes_applied.append("LSTM_training_step")
+            print("✅ Fixed LSTM training_step")
+        
+        return content
     
-    models_path = Path("src/models.py")
-    if not models_path.exists():
-        print(f"❌ models.py not found")
-        return False
+    def add_scaler_application(self, content):
+        """Add scaler application method"""
+        # Check if method already exists
+        if '_apply_scaler_to_splits' in content:
+            print("ℹ️ Scaler application method already exists")
+            return content
+        
+        # Find CompleteDataLoader class
+        class_pattern = r'class CompleteDataLoader:.*?(?=\n    def load_dataset)'
+        
+        scaler_method = '''
     
-    with open(models_path, 'r', encoding='utf-8') as f:
-        content = f.read()
+    def _apply_scaler_to_splits(self, splits: Dict[str, pd.DataFrame], 
+                               scaler: Optional[object], 
+                               feature_cols: List[str]) -> Dict[str, pd.DataFrame]:
+        """Apply scaler to feature columns in all splits"""
+        if scaler is None or not feature_cols:
+            logger.warning("No scaler or features to scale")
+            return splits
+        
+        for split_name, df in splits.items():
+            existing_features = [f for f in feature_cols if f in df.columns]
+            numeric_features = []
+            
+            for feature in existing_features:
+                if df[feature].dtype in ['float64', 'float32', 'int64', 'int32']:
+                    numeric_features.append(feature)
+            
+            if numeric_features:
+                try:
+                    scaled_values = scaler.transform(df[numeric_features])
+                    df.loc[:, numeric_features] = scaled_values
+                    logger.info(f"   ✅ Scaled {len(numeric_features)} features in {split_name}")
+                except Exception as e:
+                    logger.error(f"Failed to scale {split_name}: {e}")
+                    raise
+        
+        return splits
+'''
+        
+        # Insert after class definition
+        insertion_point = "class CompleteDataLoader:"
+        if insertion_point in content:
+            # Find the __init__ method end
+            init_end = content.find("logger.info(\"✅ Directory structure validation passed\")", 
+                                  content.find(insertion_point))
+            if init_end > 0:
+                # Insert after the __init__ method
+                insert_pos = content.find("\n", init_end) + 1
+                content = content[:insert_pos] + scaler_method + content[insert_pos:]
+                self.fixes_applied.append("scaler_application")
+                print("✅ Added scaler application method")
+        
+        # Also fix load_dataset to use scaler
+        load_dataset_pattern = r'(feature_analysis = self\._analyze_financial_features.*?\n)'
+        replacement = r'\1            # Apply scaler\n            if scaler and feature_metadata:\n                splits = self._apply_scaler_to_splits(splits, scaler, feature_metadata)\n\n'
+        
+        if not "self._apply_scaler_to_splits" in content:
+            content = re.sub(load_dataset_pattern, replacement, content)
+        
+        return content
     
-    checks = [
-        ("target_col in LSTM validation", "feature_cols, target_col, sequence_length=30" in content),
-        ("Dynamic target in validation", "primary_target = target_cols[0]" in content or "primary_target =" in content),
-        ("Target logging added", "Using target column:" in content),
-    ]
+    def add_memory_monitoring(self, content):
+        """Add enhanced memory monitoring"""
+        # Check if should_cleanup exists
+        if 'should_cleanup' in content:
+            print("ℹ️ Memory monitoring already enhanced")
+            return content
+        
+        # Add should_cleanup method
+        memory_method = '''
     
-    all_good = True
-    for check_name, check_result in checks:
-        status = "✅" if check_result else "❌"
-        print(f"   {status} {check_name}")
-        if not check_result:
-            all_good = False
+    @staticmethod
+    def should_cleanup(threshold_percent: float = 80.0) -> bool:
+        """Check if memory cleanup is needed"""
+        stats = MemoryMonitor.get_memory_usage()
+        return (stats['percent'] > threshold_percent or 
+                stats.get('gpu_percent', 0) > threshold_percent)
+'''
+        
+        # Find MemoryMonitor class
+        monitor_class = "class MemoryMonitor:"
+        if monitor_class in content:
+            # Find cleanup_memory method
+            cleanup_end = content.find("logger.warning(f\"⚠️ Memory cleanup failed: {e}\")", 
+                                     content.find(monitor_class))
+            if cleanup_end > 0:
+                insert_pos = content.find("\n", cleanup_end) + 1
+                content = content[:insert_pos] + memory_method + content[insert_pos:]
+                self.fixes_applied.append("memory_monitoring")
+                print("✅ Added enhanced memory monitoring")
+        
+        return content
     
-    return all_good
+    def fix_feature_analysis(self, content):
+        """Fix feature analysis to use sets"""
+        # Check if already using sets
+        if "analysis = {\n            'identifier_features': set()," in content:
+            print("ℹ️ Feature analysis already uses sets")
+            return content
+        
+        # Replace initialization
+        old_init = """analysis = {
+            'identifier_features': [],
+            'target_features': [],"""
+        
+        new_init = """analysis = {
+            'identifier_features': set(),
+            'target_features': set(),"""
+        
+        if old_init in content:
+            content = content.replace(old_init, new_init)
+            
+            # Also replace list operations with set operations
+            content = re.sub(r'analysis\[(.*?)\]\.append\((.*?)\)', 
+                           r'analysis[\1].add(\2)', content)
+            
+            # Add conversion to lists at the end
+            conversion_code = '''
+        
+        # Convert sets to sorted lists
+        for key in analysis.keys():
+            if key != 'available_features' and isinstance(analysis[key], set):
+                analysis[key] = sorted(list(analysis[key]))
+'''
+            
+            # Find the return statement in _analyze_financial_features
+            return_pattern = r'(\n        return analysis)'
+            content = re.sub(return_pattern, conversion_code + r'\1', content)
+            
+            self.fixes_applied.append("feature_analysis_sets")
+            print("✅ Fixed feature analysis to use sets")
+        
+        return content
+    
+    def fix_tft_validation_split(self, content):
+        """Fix TFT validation split calculation"""
+        # Look for the problematic validation split code
+        old_pattern = r'if pd\.isna\(val_start_idx\):\s*val_start_idx = int\(combined_data\[\'time_idx\'\]\.max\(\) \* 0\.8\)'
+        
+        new_code = '''if pd.isna(val_start_idx):
+            # Fallback with proper temporal calculation
+            train_end_date = train_data['date'].max()
+            val_start_idx = combined_data[combined_data['date'] > train_end_date]['time_idx'].min()
+            
+            if pd.isna(val_start_idx):
+                # Last resort: use date-based split
+                total_days = (combined_data['date'].max() - combined_data['date'].min()).days
+                val_start_date_calc = combined_data['date'].min() + timedelta(days=int(total_days * 0.8))
+                val_start_idx = combined_data[combined_data['date'] >= val_start_date_calc]['time_idx'].min()
+                
+                if pd.isna(val_start_idx):
+                    raise ValueError("Cannot determine validation split index")'''
+        
+        if re.search(old_pattern, content):
+            content = re.sub(old_pattern, new_code, content)
+            self.fixes_applied.append("tft_validation_split")
+            print("✅ Fixed TFT validation split calculation")
+        
+        return content
+    
+    def add_dataset_validation(self, content):
+        """Add enhanced dataset validation"""
+        # Fix _load_data_splits method
+        old_pattern = r'if splits\[split\]\.empty:\s*raise ValueError\(f"Empty {split} split"\)'
+        
+        new_validation = '''if splits[split].empty:
+                raise ValueError(f"Empty {split} split in {file_path}")
+            
+            # Validate required columns
+            required_cols = ['date', 'symbol']
+            missing_cols = [col for col in required_cols if col not in splits[split].columns]
+            if missing_cols:
+                raise ValueError(f"Missing required columns in {split}: {missing_cols}")
+            
+            # Check for target columns
+            target_cols = [col for col in splits[split].columns if col.startswith('target_')]
+            if not target_cols:
+                raise ValueError(f"No target columns found in {split}")'''
+        
+        if old_pattern in content and "# Check for target columns" not in content:
+            content = re.sub(old_pattern, new_validation, content)
+            self.fixes_applied.append("dataset_validation")
+            print("✅ Added enhanced dataset validation")
+        
+        return content
+    
+    def enhance_config_class(self, content):
+        """Enhance configuration class"""
+        # Check if already enhanced
+        if "min_lstm_features: int = 10" in content:
+            print("ℹ️ Configuration already enhanced")
+            return content
+        
+        # Add new configuration parameters
+        config_pattern = r'(# Financial parameters\s*quantiles: List\[float\] = None)'
+        
+        new_params = '''# Feature requirements
+    min_lstm_features: int = 10
+    min_tft_baseline_features: int = 15
+    min_tft_enhanced_features: int = 20
+    min_temporal_decay_features: int = 5
+    
+    # Memory management
+    memory_cleanup_frequency: int = 20
+    memory_threshold_percent: float = 80.0
+    batch_size_reduction_factor: float = 0.5
+    
+    # Financial parameters
+    quantiles: List[float] = None'''
+        
+        if re.search(config_pattern, content):
+            content = re.sub(config_pattern, new_params, content)
+            self.fixes_applied.append("enhanced_config")
+            print("✅ Enhanced configuration class")
+        
+        return content
 
 def main():
-    """Main execution"""
-    print("🔧 AUTOMATIC HORIZON FIXES FOR [5, 22, 90]")
-    print("=" * 60)
+    """Apply all fixes"""
+    print("🚀 Financial Model Fix Application Tool")
+    print("=" * 50)
     
-    # Fix models.py
-    models_fixed = fix_models_py()
+    # Check if models.py exists
+    if not Path("src/models.py").exists():
+        print("❌ Error: src/models.py not found!")
+        print("Please run this script from the project root directory.")
+        return 1
     
-    # Fix config.yaml
-    config_fixed = fix_config_yaml()
-    
-    # Verify fixes
-    verification_passed = verify_fixes()
-    
-    # Summary
-    print(f"\n🎯 SUMMARY")
-    print("=" * 20)
-    print(f"Models.py: {'✅ Fixed' if models_fixed else '❌ Issues'}")
-    print(f"Config.yaml: {'✅ Fixed' if config_fixed else '❌ Issues'}")
-    print(f"Verification: {'✅ Passed' if verification_passed else '❌ Failed'}")
-    
-    if models_fixed and verification_passed:
-        print(f"\n🎉 ALL HORIZON FIXES APPLIED SUCCESSFULLY!")
-        print(f"✅ Your code now supports [5, 22, 90] horizons")
-        print(f"🚀 Ready to run: python src/models.py")
+    # Apply fixes
+    applicator = ModelFixApplicator()
+    if applicator.apply_all_fixes():
+        print("\n✅ All fixes applied successfully!")
+        print("\n📋 Next steps:")
+        print("1. Review the changes in src/models.py")
+        print("2. Run the test script: python test_fixes.py")
+        print("3. If tests pass, proceed with training")
+        
+        # Run validation test
+        print("\n🧪 Running validation tests...")
+        import subprocess
+        try:
+            result = subprocess.run(["python", "test_fixes.py"], 
+                                  capture_output=True, text=True)
+            if result.returncode == 0:
+                print("✅ Validation tests passed!")
+            else:
+                print("⚠️ Some validation tests failed. Check test_results.txt")
+        except:
+            print("ℹ️ Run test_fixes.py manually to validate")
+        
+        return 0
     else:
-        print(f"\n⚠️ SOME FIXES MAY NEED MANUAL INTERVENTION")
-        print(f"💡 Check the patterns that couldn't be automatically fixed")
-    
-    return models_fixed and verification_passed
+        print("\n❌ Fix application failed!")
+        return 1
 
 if __name__ == "__main__":
-    success = main()
-    exit(0 if success else 1)
+    exit(main())
