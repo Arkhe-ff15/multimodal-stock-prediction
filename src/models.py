@@ -900,14 +900,24 @@ class TFTDatasetPreparer:
         logger.info(f"📊 Time index created: {data['time_idx'].min()} to {data['time_idx'].max()}")
         return data
 
+logger = logging.getLogger(__name__)
+
 class SimpleTFTTrainer(pl.LightningModule):
-    """Simplified TFT trainer that bypasses trainer attachment issues"""
+    """
+    Simplified and corrected TFT trainer.
     
-    def __init__(self, config: CompleteModelConfig, training_dataset: Any, model_type: str):
+    This version includes:
+    - A fix for the `ValueError` during tensor conversion.
+    - A refactored `_shared_step` to reduce code duplication.
+    - Robust median quantile identification.
+    - Explicit device handling for newly created tensors.
+    """
+    
+    def __init__(self, config: Any, training_dataset: Any, model_type: str):
         super().__init__()
-        self.save_hyperparameters()
+        # Use save_hyperparameters to automatically save arguments to self.hparams
+        self.save_hyperparameters(ignore=['training_dataset'])
         self.config = config
-        self.training_dataset = training_dataset
         self.model_type = model_type
         
         # Model configuration
@@ -918,7 +928,7 @@ class SimpleTFTTrainer(pl.LightningModule):
             self.hidden_size = config.tft_hidden_size
             self.attention_heads = config.tft_attention_head_size
         
-        # Create TFT model
+        # Create TFT model from the dataset
         self.tft_model = TemporalFusionTransformer.from_dataset(
             training_dataset,
             learning_rate=config.tft_learning_rate,
@@ -932,112 +942,171 @@ class SimpleTFTTrainer(pl.LightningModule):
             reduce_on_plateau_patience=config.early_stopping_patience // 2
         )
         
-        # Store the loss function separately for direct use
+        # Store the loss function separately
         self.loss_fn = QuantileLoss(quantiles=config.quantiles)
         
-        # Store validation outputs for metrics
+        # Store validation outputs for epoch-end metrics
         self.validation_step_outputs = []
-        
+
+        # Robustly find the index of the median quantile (0.5) for MAE calculation
+        try:
+            self.median_idx = self.config.quantiles.index(0.5)
+        except ValueError:
+            # Fallback if 0.5 is not in the list
+            self.median_idx = len(self.config.quantiles) // 2
+            logger.warning(
+                f"Quantile 0.5 not found in {config.quantiles}. "
+                f"Using middle index {self.median_idx} for MAE calculation."
+            )
+
         logger.info(f"🧠 {model_type} TFT Model initialized:")
         logger.info(f"   🔧 Hidden size: {self.hidden_size}")
         logger.info(f"   👁️ Attention heads: {self.attention_heads}")
-        logger.info(f"   📊 Output quantiles: {config.quantiles}")
-    
+        logger.info(f"   📊 Output quantiles: {config.quantiles} (Median index: {self.median_idx})")
+
     def forward(self, x):
+        """Forward pass through the TFT model."""
         return self.tft_model(x)
-    
-    def training_step(self, batch, batch_idx):
-        # Unpack batch - TFT datasets return (x, y) tuples
-        x, y = batch
+
+    def _extract_targets_from_batch(self, batch):
+        """
+        Extracts feature dictionary (x) and target tensor (y) from a batch.
+        Handles the common (x, y) tuple structure from pytorch-forecasting.
+        """
+        if isinstance(batch, (list, tuple)) and len(batch) >= 2:
+            x, y_data = batch[0], batch[1]
+            
+            # The target y is often the first element of the y_data tuple
+            y_true = y_data[0] if isinstance(y_data, (list, tuple)) else y_data
+            
+            # Ensure target is a tensor and on the correct device
+            if not isinstance(y_true, torch.Tensor):
+                y_true = torch.tensor(y_true, dtype=torch.float32, device=self.device)
+            
+            return x, y_true
         
-        # Forward pass through the model
+        raise ValueError(f"Unexpected batch structure received: {type(batch)}")
+
+    def _shared_step(self, batch):
+        x, y_true = self._extract_targets_from_batch(batch)
         output = self(x)
-        
-        # Handle different output formats from TFT
+
+        # Robust prediction extraction
         if isinstance(output, dict):
-            # TFT returns a dictionary with 'prediction_outputs' key
-            predictions = output.get('prediction_outputs', output.get('prediction', None))
+            predictions = output.get('prediction', output.get('prediction_outputs'))
+            if predictions is None:
+                predictions = list(output.values())[0]
         else:
             predictions = output
+        if isinstance(predictions, (list, tuple)):
+            predictions = predictions[0]
+        predictions = torch.as_tensor(predictions, dtype=torch.float32, device=self.device)
+
+        # ---- FIX: Ensure y_true shape matches what QuantileLoss expects ----
+        # predictions: [batch_size, prediction_length, num_quantiles]
+        # y_true should be [batch_size, prediction_length] for QuantileLoss
         
-        # Compute loss using the quantile loss function
-        # The predictions should have shape (batch_size, prediction_length, num_quantiles)
-        # The targets y should have shape (batch_size, prediction_length) or (batch_size, prediction_length, 1)
+        # Handle potential shape issues
+        if y_true.dim() == 3 and y_true.shape[2] == 1:
+            y_true = y_true.squeeze(-1)  # Remove singleton dimension
         
-        # Ensure y has the right shape for loss computation
-        if len(y.shape) == 2:
-            y = y.unsqueeze(-1)  # Add quantile dimension
+        # Check if y_true needs transposing
+        if y_true.shape[0] == predictions.shape[1] and y_true.shape[1] == predictions.shape[0]:
+            y_true = y_true.T
+        
+        # Ensure y_true is 2D for QuantileLoss
+        if y_true.dim() > 2:
+            # If there are extra dimensions, take the first one
+            y_true = y_true[..., 0] if y_true.shape[-1] == 1 else y_true
+        
+        # Final shape validation
+        if y_true.shape[0] != predictions.shape[0] or y_true.shape[1] != predictions.shape[1]:
+            logger.error(f"Shape mismatch - predictions: {predictions.shape}, y_true: {y_true.shape}")
+            # Try to reshape y_true to match predictions
+            try:
+                y_true = y_true.view(predictions.shape[0], predictions.shape[1])
+            except:
+                raise ValueError(f"Cannot reshape y_true {y_true.shape} to match predictions {predictions.shape}")
+        
+        # Debug logging (remove in production)
+        if hasattr(self, '_debug_counter'):
+            self._debug_counter += 1
+        else:
+            self._debug_counter = 0
+        
+        if self._debug_counter < 5:  # Only log first few batches
+            logger.debug(f"Batch {self._debug_counter} - predictions: {predictions.shape}, y_true: {y_true.shape}")
         
         # Compute quantile loss
-        loss = self.loss_fn(predictions, y)
+        loss = self.loss_fn(predictions, y_true)
+
+        return loss, predictions, y_true
+
+    def training_step(self, batch, batch_idx):
+        """Performs a single training step."""
+        loss, predictions, y_true = self._shared_step(batch)
         
-        # Log metrics
+        # Log training loss
         self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
         
-        # Also log the median prediction error (using middle quantile)
-        median_idx = len(self.config.quantiles) // 2
-        median_predictions = predictions[..., median_idx]
-        mae = torch.mean(torch.abs(median_predictions - y.squeeze(-1)))
-        self.log('train_mae', mae, on_step=False, on_epoch=True)
+        # Log Mean Absolute Error (MAE) using the median prediction
+        median_predictions = predictions[..., self.median_idx]
+        mae = torch.mean(torch.abs(median_predictions - y_true.squeeze(-1)))
+        self.log('train_mae', mae, on_step=False, on_epoch=True, prog_bar=False)
         
         return loss
-    
+
     def validation_step(self, batch, batch_idx):
-        # Unpack batch
-        x, y = batch
+        """Performs a single validation step."""
+        loss, predictions, y_true = self._shared_step(batch)
         
-        # Forward pass through the model
-        output = self(x)
-        
-        # Handle different output formats from TFT
-        if isinstance(output, dict):
-            predictions = output.get('prediction_outputs', output.get('prediction', None))
-        else:
-            predictions = output
-        
-        # Ensure y has the right shape for loss computation
-        if len(y.shape) == 2:
-            y = y.unsqueeze(-1)
-        
-        # Compute quantile loss
-        loss = self.loss_fn(predictions, y)
-        
-        # Log metrics
+        # Log validation loss
         self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
         
-        # Calculate median prediction error
-        median_idx = len(self.config.quantiles) // 2
-        median_predictions = predictions[..., median_idx]
-        mae = torch.mean(torch.abs(median_predictions - y.squeeze(-1)))
-        self.log('val_mae', mae, on_step=False, on_epoch=True)
+        # Log Mean Absolute Error (MAE)
+        median_predictions = predictions[..., self.median_idx]
+        mae = torch.mean(torch.abs(median_predictions - y_true.squeeze(-1)))
+        self.log('val_mae', mae, on_step=False, on_epoch=True, prog_bar=True)
         
-        # Store for additional metrics calculation
-        self.validation_step_outputs.append({
+        # Store detached outputs for epoch-end calculations
+        output_dict = {
             'loss': loss.detach(),
             'predictions': median_predictions.detach().cpu(),
-            'targets': y.squeeze(-1).detach().cpu()
-        })
+            'targets': y_true.squeeze(-1).detach().cpu()
+        }
+        self.validation_step_outputs.append(output_dict)
         
         return loss
-    
+
     def on_validation_epoch_end(self):
-        if self.validation_step_outputs:
-            # Calculate average validation loss
-            avg_loss = torch.stack([x['loss'] for x in self.validation_step_outputs]).mean()
-            self.log('val_loss_custom', avg_loss)
-            
-            # Calculate hit rate (directional accuracy) if applicable
-            all_preds = torch.cat([x['predictions'] for x in self.validation_step_outputs])
-            all_targets = torch.cat([x['targets'] for x in self.validation_step_outputs])
-            
-            if len(all_preds) > 10 and all_preds.dim() == 1:  # Only for single-step predictions
-                hit_rate = torch.mean((torch.sign(all_preds) == torch.sign(all_targets)).float())
-                self.log('val_hit_rate', hit_rate)
-            
-            self.validation_step_outputs.clear()
-    
+        """Calculates and logs metrics at the end of the validation epoch."""
+        if not self.validation_step_outputs:
+            return
+
+        # Calculate average validation loss across all batches
+        avg_loss = torch.stack([x['loss'] for x in self.validation_step_outputs]).mean()
+        self.log('val_loss_epoch', avg_loss, prog_bar=True)
+        
+        # Concatenate all predictions and targets from the epoch
+        all_preds = torch.cat([x['predictions'] for x in self.validation_step_outputs])
+        all_targets = torch.cat([x['targets'] for x in self.validation_step_outputs])
+
+        # Flatten tensors for metric calculation
+        all_preds = all_preds.flatten()
+        all_targets = all_targets.flatten()
+        
+        # Calculate hit rate (directional accuracy) if there are enough samples
+        if len(all_preds) > 1:
+            # We compare the sign of the prediction vs the sign of the actual value.
+            # torch.sign() returns 1 for positive, -1 for negative, 0 for zero.
+            hit_rate = torch.mean((torch.sign(all_preds) == torch.sign(all_targets)).float())
+            self.log('val_hit_rate', hit_rate, prog_bar=True)
+        
+        # Clear the stored outputs for the next epoch
+        self.validation_step_outputs.clear()
+
     def configure_optimizers(self):
-        # Use AdamW optimizer like the original TFT
+        """Configures the optimizer and learning rate scheduler."""
         optimizer = torch.optim.AdamW(
             self.parameters(),
             lr=self.config.tft_learning_rate,
@@ -1047,7 +1116,7 @@ class SimpleTFTTrainer(pl.LightningModule):
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
             mode='min',
-            factor=0.7,
+            factor=0.7, # Reduce LR by 30%
             patience=self.config.early_stopping_patience // 2,
             min_lr=1e-6
         )
@@ -1056,11 +1125,11 @@ class SimpleTFTTrainer(pl.LightningModule):
             'optimizer': optimizer,
             'lr_scheduler': {
                 'scheduler': scheduler,
-                'monitor': 'val_loss',
+                'monitor': 'val_loss_epoch', # Monitor the epoch-end validation loss
                 'frequency': 1
             }
         }
-
+        
 class CompleteFinancialModelFramework:
     """Complete framework for training all three models"""
     
