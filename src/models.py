@@ -905,18 +905,11 @@ logger = logging.getLogger(__name__)
 
 class SimpleTFTTrainer(pl.LightningModule):
     """
-    Simplified and corrected TFT trainer.
-    
-    This version includes:
-    - A fix for the `ValueError` during tensor conversion.
-    - A refactored `_shared_step` to reduce code duplication.
-    - Robust median quantile identification.
-    - Explicit device handling for newly created tensors.
+    Simplified and corrected TFT trainer with comprehensive device handling.
     """
     
     def __init__(self, config: Any, training_dataset: Any, model_type: str):
         super().__init__()
-        # Use save_hyperparameters to automatically save arguments to self.hparams
         self.save_hyperparameters(ignore=['training_dataset'])
         self.config = config
         self.model_type = model_type
@@ -953,7 +946,6 @@ class SimpleTFTTrainer(pl.LightningModule):
         try:
             self.median_idx = self.config.quantiles.index(0.5)
         except ValueError:
-            # Fallback if 0.5 is not in the list
             self.median_idx = len(self.config.quantiles) // 2
             logger.warning(
                 f"Quantile 0.5 not found in {config.quantiles}. "
@@ -965,108 +957,118 @@ class SimpleTFTTrainer(pl.LightningModule):
         logger.info(f"   👁️ Attention heads: {self.attention_heads}")
         logger.info(f"   📊 Output quantiles: {config.quantiles} (Median index: {self.median_idx})")
 
+    def setup(self, stage: str = None):
+        """Ensure all model components are on the correct device"""
+        super().setup(stage)
+        
+        # Get the device this module is on
+        device = next(self.parameters()).device
+        
+        # Move the TFT model to the same device
+        self.tft_model = self.tft_model.to(device)
+        
+        # Explicitly move all buffers
+        for name, buffer in self.tft_model.named_buffers():
+            if buffer.device != device:
+                logger.debug(f"Moving buffer {name} from {buffer.device} to {device}")
+                buffer.data = buffer.data.to(device)
+        
+        # Explicitly move all parameters
+        for name, param in self.tft_model.named_parameters():
+            if param.device != device:
+                logger.debug(f"Moving parameter {name} from {param.device} to {device}")
+                param.data = param.data.to(device)
+        
+        # Ensure loss function is on correct device
+        if hasattr(self.loss_fn, 'to'):
+            self.loss_fn = self.loss_fn.to(device)
+
+    def transfer_batch_to_device(self, batch, device, dataloader_idx):
+        """Override to ensure proper device transfer"""
+        return self._transfer_to_device(batch, device)
+    
+    def _transfer_to_device(self, item, device):
+        """Recursively transfer items to device"""
+        if hasattr(item, 'to'):
+            return item.to(device, non_blocking=True)
+        elif isinstance(item, dict):
+            return {k: self._transfer_to_device(v, device) for k, v in item.items()}
+        elif isinstance(item, (list, tuple)):
+            return type(item)(self._transfer_to_device(v, device) for v in item)
+        return item
+
     def forward(self, x):
         if self.tft_model is None:
             raise RuntimeError("TFT model not initialized")
         
-        # DEVICE FIX: Move input to same device as model
+        # Ensure input is on same device as model
         device = next(self.tft_model.parameters()).device
-        
-        if hasattr(x, 'keys'):  # Dictionary input
-            x_device = {}
-            for key, value in x.items():
-                if hasattr(value, 'to'):
-                    x_device[key] = value.to(device)
-                else:
-                    x_device[key] = value
-            x = x_device
-        elif hasattr(x, 'to'):  # Tensor input
-            x = x.to(device)
+        x = self._transfer_to_device(x, device)
         
         return self.tft_model(x)
 
     def _extract_targets_from_batch(self, batch):
-        """
-        Extracts feature dictionary (x) and target tensor (y) from a batch.
-        Handles the common (x, y) tuple structure from pytorch-forecasting.
-        """
+        """Extract features and targets from batch with device handling"""
         if isinstance(batch, (list, tuple)) and len(batch) >= 2:
             x, y_data = batch[0], batch[1]
             
-            # The target y is often the first element of the y_data tuple
             y_true = y_data[0] if isinstance(y_data, (list, tuple)) else y_data
             
-            # Ensure target is a tensor and on the correct device
+            # Ensure target is on correct device
             if not isinstance(y_true, torch.Tensor):
                 y_true = torch.tensor(y_true, dtype=torch.float32, device=self.device)
+            else:
+                y_true = y_true.to(self.device, non_blocking=True)
             
             return x, y_true
         
-        raise ValueError(f"Unexpected batch structure received: {type(batch)}")
+        raise ValueError(f"Unexpected batch structure: {type(batch)}")
 
     def _shared_step(self, batch):
         x, y_true = self._extract_targets_from_batch(batch)
         output = self(x)
 
-        # Robust prediction extraction
+        # Extract predictions
         if isinstance(output, dict):
             predictions = output.get('prediction', output.get('prediction_outputs'))
             if predictions is None:
                 predictions = list(output.values())[0]
         else:
             predictions = output
+        
         if isinstance(predictions, (list, tuple)):
             predictions = predictions[0]
+        
+        # Ensure predictions are on correct device
         predictions = torch.as_tensor(predictions, dtype=torch.float32, device=self.device)
 
-        # ---- FIX: Ensure y_true shape matches what QuantileLoss expects ----
-        # predictions: [batch_size, prediction_length, num_quantiles]
-        # y_true should be [batch_size, prediction_length] for QuantileLoss
-        
-        # Handle potential shape issues
+        # Handle y_true shape for QuantileLoss
         if y_true.dim() == 3 and y_true.shape[2] == 1:
-            y_true = y_true.squeeze(-1)  # Remove singleton dimension
+            y_true = y_true.squeeze(-1)
         
-        # Check if y_true needs transposing
         if y_true.shape[0] == predictions.shape[1] and y_true.shape[1] == predictions.shape[0]:
             y_true = y_true.T
         
-        # Ensure y_true is 2D for QuantileLoss
         if y_true.dim() > 2:
-            # If there are extra dimensions, take the first one
             y_true = y_true[..., 0] if y_true.shape[-1] == 1 else y_true
         
-        # Final shape validation
+        # Final shape validation and reshape if needed
         if y_true.shape[0] != predictions.shape[0] or y_true.shape[1] != predictions.shape[1]:
-            logger.error(f"Shape mismatch - predictions: {predictions.shape}, y_true: {y_true.shape}")
-            # Try to reshape y_true to match predictions
             try:
                 y_true = y_true.view(predictions.shape[0], predictions.shape[1])
             except:
                 raise ValueError(f"Cannot reshape y_true {y_true.shape} to match predictions {predictions.shape}")
         
-        # Debug logging (remove in production)
-        if hasattr(self, '_debug_counter'):
-            self._debug_counter += 1
-        else:
-            self._debug_counter = 0
-        
-        if self._debug_counter < 5:  # Only log first few batches
-            logger.debug(f"Batch {self._debug_counter} - predictions: {predictions.shape}, y_true: {y_true.shape}")
-        
-        # Compute quantile loss
+        # Compute loss with same device tensors
         loss = self.loss_fn(predictions, y_true)
-
+        
         return loss, predictions, y_true
 
     def training_step(self, batch, batch_idx):
-        """Performs a single training step."""
         loss, predictions, y_true = self._shared_step(batch)
         
-        # Log training loss
         self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
         
-        # Log Mean Absolute Error (MAE) using the median prediction
         median_predictions = predictions[..., self.median_idx]
         mae = torch.mean(torch.abs(median_predictions - y_true.squeeze(-1)))
         self.log('train_mae', mae, on_step=False, on_epoch=True, prog_bar=False)
@@ -1074,20 +1076,17 @@ class SimpleTFTTrainer(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        """Performs a single validation step."""
         loss, predictions, y_true = self._shared_step(batch)
         
-        # Log validation loss
         self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
         
-        # Log Mean Absolute Error (MAE)
         median_predictions = predictions[..., self.median_idx]
         mae = torch.mean(torch.abs(median_predictions - y_true.squeeze(-1)))
         self.log('val_mae', mae, on_step=False, on_epoch=True, prog_bar=True)
         
-        # Store detached outputs for epoch-end calculations
+        # Store outputs for epoch-end calculations (move to CPU to save GPU memory)
         output_dict = {
-            'loss': loss.detach(),
+            'loss': loss.detach().cpu(),
             'predictions': median_predictions.detach().cpu(),
             'targets': y_true.squeeze(-1).detach().cpu()
         }
@@ -1096,34 +1095,25 @@ class SimpleTFTTrainer(pl.LightningModule):
         return loss
 
     def on_validation_epoch_end(self):
-        """Calculates and logs metrics at the end of the validation epoch."""
         if not self.validation_step_outputs:
             return
 
-        # Calculate average validation loss across all batches
         avg_loss = torch.stack([x['loss'] for x in self.validation_step_outputs]).mean()
         self.log('val_loss_epoch', avg_loss, prog_bar=True)
         
-        # Concatenate all predictions and targets from the epoch
         all_preds = torch.cat([x['predictions'] for x in self.validation_step_outputs])
         all_targets = torch.cat([x['targets'] for x in self.validation_step_outputs])
 
-        # Flatten tensors for metric calculation
         all_preds = all_preds.flatten()
         all_targets = all_targets.flatten()
         
-        # Calculate hit rate (directional accuracy) if there are enough samples
         if len(all_preds) > 1:
-            # We compare the sign of the prediction vs the sign of the actual value.
-            # torch.sign() returns 1 for positive, -1 for negative, 0 for zero.
             hit_rate = torch.mean((torch.sign(all_preds) == torch.sign(all_targets)).float())
             self.log('val_hit_rate', hit_rate, prog_bar=True)
         
-        # Clear the stored outputs for the next epoch
         self.validation_step_outputs.clear()
 
     def configure_optimizers(self):
-        """Configures the optimizer and learning rate scheduler."""
         optimizer = torch.optim.AdamW(
             self.parameters(),
             lr=self.config.tft_learning_rate,
@@ -1133,7 +1123,7 @@ class SimpleTFTTrainer(pl.LightningModule):
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
             mode='min',
-            factor=0.7, # Reduce LR by 30%
+            factor=0.7,
             patience=self.config.early_stopping_patience // 2,
             min_lr=1e-6
         )
@@ -1142,7 +1132,7 @@ class SimpleTFTTrainer(pl.LightningModule):
             'optimizer': optimizer,
             'lr_scheduler': {
                 'scheduler': scheduler,
-                'monitor': 'val_loss_epoch', # Monitor the epoch-end validation loss
+                'monitor': 'val_loss_epoch',
                 'frequency': 1
             }
         }
