@@ -707,88 +707,89 @@ class TFTDatasetPreparer:
         self.label_encoders = {}
     
     def prepare_tft_dataset(self, dataset: Dict[str, Any], model_type: str) -> Tuple[Any, Any]:
-        """Prepare TFT dataset with comprehensive validation"""
+        """Prepare TFT dataset with MULTI-HORIZON capability"""
         if not TFT_AVAILABLE:
             raise ImportError("PyTorch Forecasting not available for TFT models")
         
-        logger.info(f"🔬 Preparing TFT Dataset ({model_type})...")
+        logger.info(f"🔬 Preparing Multi-Horizon TFT Dataset ({model_type})...")
         
         # Combine all splits with proper time indexing
         combined_data = self._prepare_combined_data(dataset)
+        
+        # Find the primary target column (for TFT training)
+        target_features = dataset['feature_analysis'].get('target_features', [])
+        if not target_features:
+            raise ValueError("No target features found in dataset")
+        
+        # FIXED: Use target_5 as primary target for TFT training
+        target_col = 'target_5'
+        if target_col not in combined_data.columns:
+            # Fallback logic
+            regression_targets = [t for t in target_features if t != 'target_5_direction']
+            if not regression_targets:
+                raise ValueError("No regression targets found")
+            target_col = regression_targets[0]
+            logger.warning(f"target_5 not found, using {target_col} instead")
+        
+        logger.info(f"📊 TFT Multi-Horizon Training Target: {target_col}")
+        
+        # Create time index
+        combined_data = self._create_time_index(combined_data)
+        
+        # Determine validation split
+        val_start_date = dataset['splits']['val']['date'].min()
+        val_start_idx = combined_data[combined_data['date'] >= val_start_date]['time_idx'].min()
+        
+        if pd.isna(val_start_idx):
+            max_idx = combined_data['time_idx'].max()
+            val_start_idx = int(max_idx * 0.8)
+            logger.warning(f"Using fallback validation split at time_idx={val_start_idx}")
         
         # Get feature configuration
         feature_analysis = dataset['feature_analysis']
         feature_config = self._get_feature_config(feature_analysis, combined_data, model_type)
         
-        # Prepare categorical features
-        combined_data = self._prepare_categorical_features(combined_data, feature_config)
+        # MULTI-HORIZON CONFIGURATION
+        max_prediction_length = 90  # Predict up to 90 steps ahead
+        min_prediction_length = 5   # Minimum prediction horizon
+        max_encoder_length = self.config.tft_max_encoder_length
         
-        # Create time index
-        combined_data = self._create_time_index(combined_data)
+        logger.info(f"🎯 Multi-Horizon Setup: encoder={max_encoder_length}, prediction={min_prediction_length}-{max_prediction_length}")
         
-        # Debug: Check data types before creating TFT dataset
-        logger.info(f"🔍 Data types before TFT creation:")
-        logger.info(f"   symbol: {combined_data['symbol'].dtype}")
-        logger.info(f"   time_idx: {combined_data['time_idx'].dtype}")
-        if 'target_5' in combined_data.columns:
-            logger.info(f"   target_5: {combined_data['target_5'].dtype}")
-        logger.info(f"   Sample symbol values: {combined_data['symbol'].unique()[:5]}")
-        
-        # Split data for training and validation
-        train_data = dataset['splits']['train'].copy()
-        val_start_date = dataset['splits']['val']['date'].min()
-        
-        # Find validation start index
-        val_start_idx = combined_data[combined_data['date'] >= val_start_date]['time_idx'].min()
-        if pd.isna(val_start_idx):
-            # Fallback: use 80% of data for training
-            max_idx = combined_data['time_idx'].max()
-            val_start_idx = int(max_idx * 0.8)
-        
-        # Find the target column
-        target_features = dataset['feature_analysis'].get('target_features', [])
-        if not target_features:
-            raise ValueError("No target features found in dataset")
-        target_col = target_features[0]  # Use first target feature
-        
-        # Validate target exists in combined data
-        if target_col not in combined_data.columns:
-            raise ValueError(f"Target column '{target_col}' not found in combined data")
-        
-        logger.info(f"📊 Using target column: {target_col}")
-        logger.info(f"📊 Training data: time_idx < {val_start_idx}")
-        logger.info(f"📊 Validation data: time_idx >= {val_start_idx}")
-        
-        # Create TFT datasets
+        # Create training dataset with multi-horizon capability
         training_dataset = TimeSeriesDataSet(
             combined_data[combined_data.time_idx < val_start_idx],
             time_idx="time_idx",
             target=target_col,
             group_ids=['symbol'],
-            min_encoder_length=self.config.tft_max_encoder_length // 3,
-            max_encoder_length=self.config.tft_max_encoder_length,
-            min_prediction_length=1,
-            max_prediction_length=self.config.tft_max_prediction_length,
+            min_encoder_length=max_encoder_length // 3,
+            max_encoder_length=max_encoder_length,
+            min_prediction_length=min_prediction_length,  # 5 days minimum
+            max_prediction_length=max_prediction_length,  # 90 days maximum
             static_categoricals=feature_config['static_categoricals'],
-            static_reals=feature_config['static_reals'],
+            static_reals=feature_config['static_reals'], 
             time_varying_known_reals=feature_config['time_varying_known_reals'],
             time_varying_unknown_reals=feature_config['time_varying_unknown_reals'],
             target_normalizer=GroupNormalizer(groups=['symbol']),
             add_relative_time_idx=True,
             add_target_scales=True,
             allow_missing_timesteps=True,
+            randomize_length=True,  # Important for multi-horizon training
         )
         
+        # Create validation dataset
         validation_dataset = TimeSeriesDataSet.from_dataset(
             training_dataset,
             combined_data,
             min_prediction_idx=val_start_idx,
-            stop_randomization=True
+            stop_randomization=True  # Fixed length for evaluation
         )
         
-        logger.info(f"✅ TFT Dataset prepared ({model_type}):")
+        logger.info(f"✅ Multi-Horizon TFT Dataset prepared:")
         logger.info(f"   📊 Training samples: {len(training_dataset):,}")
         logger.info(f"   📊 Validation samples: {len(validation_dataset):,}")
+        logger.info(f"   🎯 Prediction horizons: 5-{max_prediction_length} days")
+        logger.info(f"   📈 Features: {len(feature_config['time_varying_unknown_reals'])} time-varying")
         
         return training_dataset, validation_dataset
     
@@ -965,7 +966,23 @@ class SimpleTFTTrainer(pl.LightningModule):
         logger.info(f"   📊 Output quantiles: {config.quantiles} (Median index: {self.median_idx})")
 
     def forward(self, x):
-        """Forward pass through the TFT model."""
+        if self.tft_model is None:
+            raise RuntimeError("TFT model not initialized")
+        
+        # DEVICE FIX: Move input to same device as model
+        device = next(self.tft_model.parameters()).device
+        
+        if hasattr(x, 'keys'):  # Dictionary input
+            x_device = {}
+            for key, value in x.items():
+                if hasattr(value, 'to'):
+                    x_device[key] = value.to(device)
+                else:
+                    x_device[key] = value
+            x = x_device
+        elif hasattr(x, 'to'):  # Tensor input
+            x = x.to(device)
+        
         return self.tft_model(x)
 
     def _extract_targets_from_batch(self, batch):
@@ -1210,8 +1227,8 @@ class CompleteFinancialModelFramework:
         return True
     
     def train_lstm_baseline(self) -> Dict[str, Any]:
-        """Train LSTM baseline model"""
-        logger.info("🚀 Training LSTM Baseline")
+        """Train LSTM baseline model - SINGLE HORIZON (5-day only)"""
+        logger.info("🚀 Training LSTM Baseline (Single Horizon)")
         start_time = time.time()
         
         try:
@@ -1231,22 +1248,53 @@ class CompleteFinancialModelFramework:
             if not target_features:
                 raise ValueError("No target features found in dataset")
             
-            target = target_features[0]  # Use first target
+            # FIXED: Proper target selection for single-horizon LSTM
+            regression_targets = [col for col in target_features if col != 'target_5_direction']  # Exclude classification
             
-            logger.info(f"📊 Using {len(features)} features, target: {target}")
+            # Always use target_5 for LSTM (single horizon approach)
+            target = 'target_5'
+            if target not in regression_targets:
+                # Fallback to first available regression target
+                if not regression_targets:
+                    raise ValueError("No regression targets found")
+                target = regression_targets[0]
+                logger.warning(f"target_5 not found, using {target} instead")
+            
+            logger.info(f"📊 LSTM Single-Horizon Setup:")
+            logger.info(f"   📈 Features: {len(features)}")
+            logger.info(f"   🎯 Target: {target}")
+            logger.info(f"   📊 Available targets: {regression_targets}")
+            logger.info(f"   🗄️ Dataset: {dataset_key}")
             
             # Prepare data with scaling
             train_df = dataset['splits']['train'].copy()
             val_df = dataset['splits']['val'].copy()
+            
+            # Validate target exists in data
+            if target not in train_df.columns:
+                raise ValueError(f"Target column '{target}' not found in training data")
+            if target not in val_df.columns:
+                raise ValueError(f"Target column '{target}' not found in validation data")
+            
+            # Check for missing values in target
+            train_target_nulls = train_df[target].isnull().sum()
+            val_target_nulls = val_df[target].isnull().sum()
+            if train_target_nulls > 0:
+                logger.warning(f"⚠️ Training target has {train_target_nulls} null values - removing rows")
+                train_df = train_df.dropna(subset=[target])
+            if val_target_nulls > 0:
+                logger.warning(f"⚠️ Validation target has {val_target_nulls} null values - removing rows")
+                val_df = val_df.dropna(subset=[target])
             
             # Scale features
             scaler = RobustScaler()
             train_df[features] = scaler.fit_transform(train_df[features])
             val_df[features] = scaler.transform(val_df[features])
             
-            # Save scaler
+            # Save feature scaler
             scaler_path = self.data_loader.scalers_path / f"{dataset_key}_scaler.joblib"
             joblib.dump(scaler, scaler_path)
+            logger.info(f"💾 Saved feature scaler: {scaler_path}")
             
             # Scale target
             target_scaler = RobustScaler()
@@ -1256,8 +1304,17 @@ class CompleteFinancialModelFramework:
             # Save target scaler
             target_scaler_path = self.data_loader.scalers_path / f"{dataset_key}_target_scaler.joblib"
             joblib.dump(target_scaler, target_scaler_path)
+            logger.info(f"💾 Saved target scaler: {target_scaler_path}")
+            
+            # Log data statistics
+            logger.info(f"📊 Data Statistics:")
+            logger.info(f"   📈 Training samples: {len(train_df):,}")
+            logger.info(f"   📈 Validation samples: {len(val_df):,}")
+            logger.info(f"   📈 Training symbols: {train_df['symbol'].nunique()}")
+            logger.info(f"   📈 Validation symbols: {val_df['symbol'].nunique()}")
             
             # Create datasets
+            logger.info(f"🔄 Creating LSTM datasets with sequence length: {self.config.lstm_sequence_length}")
             train_dataset = FinancialDataset(
                 train_df, features, target, self.config.lstm_sequence_length
             )
@@ -1265,37 +1322,64 @@ class CompleteFinancialModelFramework:
                 val_df, features, target, self.config.lstm_sequence_length
             )
             
+            logger.info(f"📊 LSTM Dataset Creation Complete:")
+            logger.info(f"   🔢 Training sequences: {len(train_dataset):,}")
+            logger.info(f"   🔢 Validation sequences: {len(val_dataset):,}")
+            
             # Create data loaders
             train_loader = DataLoader(
                 train_dataset, 
                 batch_size=self.config.batch_size, 
                 shuffle=True, 
-                num_workers=4
+                num_workers=4,
+                persistent_workers=True,
+                pin_memory=True
             )
             val_loader = DataLoader(
                 val_dataset, 
                 batch_size=self.config.batch_size, 
                 shuffle=False, 
-                num_workers=4
+                num_workers=4,
+                persistent_workers=True,
+                pin_memory=True
             )
             
+            logger.info(f"📊 DataLoader Configuration:")
+            logger.info(f"   🔢 Batch size: {self.config.batch_size}")
+            logger.info(f"   🔢 Training batches: {len(train_loader)}")
+            logger.info(f"   🔢 Validation batches: {len(val_loader)}")
+            
             # Create model
+            logger.info(f"🧠 Creating LSTM model with {len(features)} input features")
             lstm_model = EnhancedLSTMModel(len(features), self.config)
             trainer_model = LSTMTrainer(lstm_model, self.config)
+            
+            # Log model architecture
+            total_params = sum(p.numel() for p in lstm_model.parameters())
+            trainable_params = sum(p.numel() for p in lstm_model.parameters() if p.requires_grad)
+            logger.info(f"🧠 LSTM Model Architecture:")
+            logger.info(f"   📊 Input features: {len(features)}")
+            logger.info(f"   📊 Hidden size: {self.config.lstm_hidden_size}")
+            logger.info(f"   📊 Num layers: {self.config.lstm_num_layers}")
+            logger.info(f"   📊 Total parameters: {total_params:,}")
+            logger.info(f"   📊 Trainable parameters: {trainable_params:,}")
             
             # Setup callbacks
             callbacks = [
                 EarlyStopping(
                     monitor='val_loss', 
                     patience=self.config.early_stopping_patience, 
-                    mode='min'
+                    mode='min',
+                    verbose=True
                 ),
                 ModelCheckpoint(
                     dirpath=str(self.models_dir),
                     filename='lstm_baseline_{epoch:02d}_{val_loss:.4f}',
                     monitor='val_loss',
                     mode='min',
-                    save_top_k=3
+                    save_top_k=3,
+                    save_last=True,
+                    verbose=True
                 ),
                 LearningRateMonitor(logging_interval='epoch')
             ]
@@ -1307,8 +1391,17 @@ class CompleteFinancialModelFramework:
                 logger=TensorBoardLogger(str(self.logs_dir), name='lstm_baseline'),
                 accelerator='auto',
                 gradient_clip_val=self.config.gradient_clip_val,
-                deterministic=True
+                deterministic=True,
+                enable_progress_bar=True,
+                log_every_n_steps=50
             )
+            
+            # Log training configuration
+            logger.info(f"🏃 Training Configuration:")
+            logger.info(f"   📊 Max epochs: {self.config.lstm_max_epochs}")
+            logger.info(f"   📊 Learning rate: {self.config.lstm_learning_rate}")
+            logger.info(f"   📊 Early stopping patience: {self.config.early_stopping_patience}")
+            logger.info(f"   📊 Gradient clip: {self.config.gradient_clip_val}")
             
             # Train model
             logger.info("🚀 Starting LSTM baseline training...")
@@ -1316,30 +1409,63 @@ class CompleteFinancialModelFramework:
             
             training_time = time.time() - start_time
             
-            # Extract results
+            # Get best model metrics
+            best_val_loss = None
+            best_checkpoint = None
+            
+            if len(callbacks) >= 2 and hasattr(callbacks[1], 'best_model_score'):
+                best_val_loss = float(callbacks[1].best_model_score) if callbacks[1].best_model_score else None
+                best_checkpoint = callbacks[1].best_model_path
+            
+            # Extract final training metrics
+            if hasattr(trainer_model, 'validation_step_outputs') and trainer_model.validation_step_outputs:
+                # Get final validation metrics
+                final_val_loss = trainer.callback_metrics.get('val_loss', None)
+                final_val_hit_rate = trainer.callback_metrics.get('val_hit_rate', None)
+            else:
+                final_val_loss = None
+                final_val_hit_rate = None
+            
+            # Compile results
             results = {
                 'model_type': 'LSTM_Baseline',
+                'target': target,
                 'training_time': training_time,
-                'best_val_loss': float(callbacks[1].best_model_score) if callbacks[1].best_model_score else None,
+                'best_val_loss': best_val_loss,
+                'final_val_loss': float(final_val_loss) if final_val_loss is not None else None,
+                'final_val_hit_rate': float(final_val_hit_rate) if final_val_hit_rate is not None else None,
                 'epochs_trained': trainer.current_epoch,
-                'best_checkpoint': callbacks[1].best_model_path,
+                'best_checkpoint': best_checkpoint,
                 'dataset_used': dataset_key,
-                'features_count': len(features)
+                'features_count': len(features),
+                'training_samples': len(train_dataset),
+                'validation_samples': len(val_dataset),
+                'model_parameters': total_params,
+                'training_complete': True
             }
             
-            logger.info(f"✅ LSTM Baseline training completed!")
-            logger.info(f"⏱️ Training time: {training_time:.1f}s")
-            logger.info(f"📉 Best val loss: {results['best_val_loss']:.6f}")
+            logger.info(f"✅ LSTM Baseline training completed successfully!")
+            logger.info(f"📊 Training Summary:")
+            logger.info(f"   ⏱️ Training time: {training_time:.1f}s ({training_time/60:.1f}m)")
+            logger.info(f"   📉 Best val loss: {best_val_loss:.6f}" if best_val_loss else "   📉 Best val loss: N/A")
+            logger.info(f"   📉 Final val loss: {final_val_loss:.6f}" if final_val_loss else "   📉 Final val loss: N/A")
+            logger.info(f"   🎯 Final hit rate: {final_val_hit_rate:.3f}" if final_val_hit_rate else "   🎯 Final hit rate: N/A")
+            logger.info(f"   📊 Epochs completed: {trainer.current_epoch}")
+            logger.info(f"   💾 Best model saved: {best_checkpoint}")
             
             return results
             
         except Exception as e:
             training_time = time.time() - start_time
-            logger.error(f"❌ LSTM Baseline training failed: {e}", exc_info=True)
+            error_msg = f"LSTM Baseline training failed: {str(e)}"
+            logger.error(f"❌ {error_msg}", exc_info=True)
+            
             return {
                 'error': str(e),
                 'model_type': 'LSTM_Baseline',
-                'training_time': training_time
+                'training_time': training_time,
+                'training_complete': False,
+                'target': target if 'target' in locals() else 'unknown'
             }
     
     def train_tft_baseline(self) -> Dict[str, Any]:
