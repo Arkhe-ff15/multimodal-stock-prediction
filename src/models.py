@@ -20,6 +20,7 @@ import logging
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Any, Optional, Union
+import contextlib
 
 # Standard ML libraries
 import pandas as pd
@@ -60,6 +61,103 @@ except ImportError as e:
     print("🔧 LSTM Baseline will still work without this dependency")
 
 warnings.filterwarnings('ignore')
+
+logger = logging.getLogger(__name__)
+
+@contextlib.contextmanager
+def warn_only_determinism():
+    """
+    Context manager to handle deterministic algorithm settings across PyTorch versions.
+    - For PyTorch 1.10+: Sets warn_only=True to allow non-deterministic operations with warnings.
+    - For PyTorch 1.7-1.9: Temporarily disables determinism if enabled, with a warning.
+    - For pre-1.7: Proceeds without changes (determinism not enforced).
+    """
+    if hasattr(torch, 'are_deterministic_algorithms_warn_only'):
+        # PyTorch 1.10+ supports warn_only
+        original_warn_only = torch.are_deterministic_algorithms_warn_only()
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        try:
+            yield
+        finally:
+            torch.use_deterministic_algorithms(True, warn_only=original_warn_only)
+    else:
+        # Older PyTorch versions
+        if hasattr(torch, 'are_deterministic_algorithms_enabled'):
+            # PyTorch 1.7-1.9: Temporarily disable determinism if enabled
+            original_determinism = torch.are_deterministic_algorithms_enabled()
+            if original_determinism:
+                torch.use_deterministic_algorithms(False)
+                logger.warning("⚠️ Temporarily disabling determinism for TFT training due to incompatible PyTorch version.")
+            try:
+                yield
+            finally:
+                if original_determinism:
+                    torch.use_deterministic_algorithms(True)
+        else:
+            # Pre-1.7: No determinism settings available, proceed as is
+            yield
+
+# ===== TFT DEVICE HANDLING FIX =====
+def patch_tft_for_device_handling():
+    """Fix PyTorch Forecasting's device handling issues"""
+    if not TFT_AVAILABLE:
+        return
+        
+    from pytorch_forecasting.models.temporal_fusion_transformer import TemporalFusionTransformer
+    
+    # Patch 1: Fix get_attention_mask
+    original_get_attention_mask = TemporalFusionTransformer.get_attention_mask
+    
+    def patched_get_attention_mask(self, encoder_lengths, decoder_lengths):
+        # Get device from model
+        device = next(self.parameters()).device
+        
+        # Create masks on the correct device
+        if decoder_lengths is None:
+            # Self-attention only
+            max_len = encoder_lengths.max()
+            mask = torch.zeros(
+                (encoder_lengths.shape[0], max_len, max_len), 
+                dtype=torch.bool, 
+                device=device  # Ensure mask is created on correct device
+            )
+            for i, length in enumerate(encoder_lengths):
+                mask[i, :length, :length] = 1
+        else:
+            # Encoder-decoder attention
+            max_encoder_len = encoder_lengths.max()
+            max_decoder_len = decoder_lengths.max()
+            
+            # Make sure all tensors are on same device
+            encoder_mask = torch.zeros(
+                (encoder_lengths.shape[0], max_decoder_len, max_encoder_len), 
+                dtype=torch.bool,
+                device=device
+            )
+            for i, length in enumerate(encoder_lengths):
+                encoder_mask[i, :, :length] = 1
+                
+            decoder_mask = torch.zeros(
+                (decoder_lengths.shape[0], max_decoder_len, max_decoder_len), 
+                dtype=torch.bool,
+                device=device
+            )
+            for i, length in enumerate(decoder_lengths):
+                decoder_mask[i, :length, :length] = 1
+                
+            mask = torch.cat([encoder_mask, decoder_mask], dim=2)
+            
+        return mask
+    
+    # Apply patches
+    TemporalFusionTransformer.get_attention_mask = patched_get_attention_mask
+    
+    print("✅ Applied PyTorch Forecasting device handling patches")
+
+# Call the patch function
+patch_tft_for_device_handling()
+# ===== END TFT DEVICE HANDLING FIX =====
+
 
 # Configure logging
 log_file = Path("logs") / f"training_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
@@ -661,18 +759,18 @@ class LSTMTrainer(pl.LightningModule):
     def on_validation_epoch_end(self):
         if not self.validation_step_outputs:
             return
+
         
-        # Calculate hit rate (directional accuracy)
-        all_preds = torch.cat([x['predictions'] for x in self.validation_step_outputs])
-        all_targets = torch.cat([x['targets'] for x in self.validation_step_outputs])
+        # Collect all predictions and targets by flattening them
+        all_preds = torch.cat([x['predictions'].flatten() for x in self.validation_step_outputs])
+        all_targets = torch.cat([x['targets'].flatten() for x in self.validation_step_outputs])
         
-        preds_np = all_preds.numpy()
-        targets_np = all_targets.numpy()
+        # Calculate hit rate
+        if len(all_preds) > 1:
+            hit_rate = torch.mean((torch.sign(all_preds) == torch.sign(all_targets)).float())
+            self.log('val_hit_rate', hit_rate, prog_bar=True)
         
-        if len(preds_np) > 10:
-            hit_rate = np.mean(np.sign(preds_np) == np.sign(targets_np))
-            self.log('val_hit_rate', hit_rate)
-        
+        # Clear the outputs
         self.validation_step_outputs.clear()
     
     def configure_optimizers(self):
@@ -905,7 +1003,7 @@ logger = logging.getLogger(__name__)
 
 class SimpleTFTTrainer(pl.LightningModule):
     """
-    Simplified and corrected TFT trainer with comprehensive device handling.
+    Fixed TFT trainer with comprehensive device handling.
     """
     
     def __init__(self, config: Any, training_dataset: Any, model_type: str):
@@ -957,55 +1055,44 @@ class SimpleTFTTrainer(pl.LightningModule):
         logger.info(f"   👁️ Attention heads: {self.attention_heads}")
         logger.info(f"   📊 Output quantiles: {config.quantiles} (Median index: {self.median_idx})")
 
-    def setup(self, stage: str = None):
-        """Ensure all model components are on the correct device"""
-        super().setup(stage)
-        
-        # Get the device this module is on
-        device = next(self.parameters()).device
-        
-        # Move the TFT model to the same device
+    def on_fit_start(self):
+        """Move model to correct device at the start of training"""
+        device = self.device
         self.tft_model = self.tft_model.to(device)
-        
-        # Explicitly move all buffers
-        for name, buffer in self.tft_model.named_buffers():
-            if buffer.device != device:
-                logger.debug(f"Moving buffer {name} from {buffer.device} to {device}")
-                buffer.data = buffer.data.to(device)
-        
-        # Explicitly move all parameters
-        for name, param in self.tft_model.named_parameters():
-            if param.device != device:
-                logger.debug(f"Moving parameter {name} from {param.device} to {device}")
-                param.data = param.data.to(device)
-        
-        # Ensure loss function is on correct device
         if hasattr(self.loss_fn, 'to'):
             self.loss_fn = self.loss_fn.to(device)
-
-    def transfer_batch_to_device(self, batch, device, dataloader_idx):
-        """Override to ensure proper device transfer"""
-        return self._transfer_to_device(batch, device)
-    
-    def _transfer_to_device(self, item, device):
-        """Recursively transfer items to device"""
-        if hasattr(item, 'to'):
-            return item.to(device, non_blocking=True)
-        elif isinstance(item, dict):
-            return {k: self._transfer_to_device(v, device) for k, v in item.items()}
-        elif isinstance(item, (list, tuple)):
-            return type(item)(self._transfer_to_device(v, device) for v in item)
-        return item
+        logger.info(f"🔧 Model moved to device: {device}")
 
     def forward(self, x):
+        """Forward pass with device handling"""
         if self.tft_model is None:
             raise RuntimeError("TFT model not initialized")
         
-        # Ensure input is on same device as model
-        device = next(self.tft_model.parameters()).device
-        x = self._transfer_to_device(x, device)
+        # Ensure model is on correct device (this handles the issue)
+        if hasattr(self, 'device'):
+            device = self.device
+            
+            # Move model if needed
+            if next(self.tft_model.parameters()).device != device:
+                self.tft_model = self.tft_model.to(device)
+                logger.debug(f"Moved TFT model to {device}")
+            
+            # Recursively move all inputs to device
+            x = self._move_to_device(x, device)
         
         return self.tft_model(x)
+    
+    def _move_to_device(self, obj, device):
+        """Recursively move object to device"""
+        if torch.is_tensor(obj):
+            return obj.to(device, non_blocking=True)
+        elif isinstance(obj, dict):
+            return {k: self._move_to_device(v, device) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return type(obj)(self._move_to_device(v, device) for v in obj)
+        elif hasattr(obj, 'to'):
+            return obj.to(device, non_blocking=True)
+        return obj
 
     def _extract_targets_from_batch(self, batch):
         """Extract features and targets from batch with device handling"""
@@ -1015,10 +1102,11 @@ class SimpleTFTTrainer(pl.LightningModule):
             y_true = y_data[0] if isinstance(y_data, (list, tuple)) else y_data
             
             # Ensure target is on correct device
+            device = self.device if hasattr(self, 'device') else 'cpu'
             if not isinstance(y_true, torch.Tensor):
-                y_true = torch.tensor(y_true, dtype=torch.float32, device=self.device)
+                y_true = torch.tensor(y_true, dtype=torch.float32, device=device)
             else:
-                y_true = y_true.to(self.device, non_blocking=True)
+                y_true = y_true.to(device, non_blocking=True)
             
             return x, y_true
         
@@ -1040,7 +1128,8 @@ class SimpleTFTTrainer(pl.LightningModule):
             predictions = predictions[0]
         
         # Ensure predictions are on correct device
-        predictions = torch.as_tensor(predictions, dtype=torch.float32, device=self.device)
+        device = self.device if hasattr(self, 'device') else 'cpu'
+        predictions = torch.as_tensor(predictions, dtype=torch.float32, device=device)
 
         # Handle y_true shape for QuantileLoss
         if y_true.dim() == 3 and y_true.shape[2] == 1:
@@ -1092,25 +1181,28 @@ class SimpleTFTTrainer(pl.LightningModule):
         }
         self.validation_step_outputs.append(output_dict)
         
+        print(f"Predictions shape: {median_predictions.shape}, Targets shape: {y_true.shape}")
+        
         return loss
 
     def on_validation_epoch_end(self):
         if not self.validation_step_outputs:
             return
 
+        # Calculate average loss
         avg_loss = torch.stack([x['loss'] for x in self.validation_step_outputs]).mean()
         self.log('val_loss_epoch', avg_loss, prog_bar=True)
         
-        all_preds = torch.cat([x['predictions'] for x in self.validation_step_outputs])
-        all_targets = torch.cat([x['targets'] for x in self.validation_step_outputs])
-
-        all_preds = all_preds.flatten()
-        all_targets = all_targets.flatten()
+        # Collect all predictions and targets by flattening them
+        all_preds = torch.cat([x['predictions'].flatten() for x in self.validation_step_outputs])
+        all_targets = torch.cat([x['targets'].flatten() for x in self.validation_step_outputs])
         
+        # Calculate hit rate
         if len(all_preds) > 1:
             hit_rate = torch.mean((torch.sign(all_preds) == torch.sign(all_targets)).float())
             self.log('val_hit_rate', hit_rate, prog_bar=True)
         
+        # Clear the outputs
         self.validation_step_outputs.clear()
 
     def configure_optimizers(self):
@@ -1521,7 +1613,9 @@ class CompleteFinancialModelFramework:
             
             # Train model
             logger.info("🚀 Starting TFT baseline training...")
-            trainer.fit(model, train_dataloader, val_dataloader)
+            logger.warning("⚠️ Setting warn_only=True for determinism in TFT models due to non-deterministic operations.")
+            with warn_only_determinism():
+                trainer.fit(model, train_dataloader, val_dataloader)
             
             training_time = time.time() - start_time
             
@@ -1619,8 +1713,10 @@ class CompleteFinancialModelFramework:
             
             # Train model
             logger.info("🚀 Starting TFT Enhanced training...")
-            trainer.fit(model, train_dataloader, val_dataloader)
-            
+            logger.warning("⚠️ Setting warn_only=True for determinism in TFT models due to non-deterministic operations.")
+            with warn_only_determinism():
+                trainer.fit(model, train_dataloader, val_dataloader)
+                    
             training_time = time.time() - start_time
             
             # Extract results
