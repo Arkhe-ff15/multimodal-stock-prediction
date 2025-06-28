@@ -1156,9 +1156,9 @@ if __name__ == "__main__":
     
     # Test configuration
     test_config = DatasetConfig(
-        symbols=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'NFLX'],
-        start_date='2018-01-01',  # ✅ CORRECTED TO 2018
-        end_date='2024-01-31',
+        symbols=['AAPL', 'MSFT', 'AMZN', 'GOOGL', 'TSLA', 'NFLX', 'NVDA', 'INTC', 'QCOM'],
+        start_date='2016-01-01',  
+        end_date='2024-12-31',
         target_horizons=[5, 22, 90]
     )
     

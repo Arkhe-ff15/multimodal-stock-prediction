@@ -127,15 +127,6 @@ class TickerNewsValidator:
                 'sector_keywords': ['gpu', 'graphics card', 'artificial intelligence', 'gaming', 'data center'],
                 'negative_keywords': []
             },
-            'META': {
-                'names': ['meta', 'facebook', 'meta platforms', 'menlo park', 'mark zuckerberg'],
-                'products': ['facebook', 'instagram', 'whatsapp', 'messenger', 'oculus',
-                           'quest', 'metaverse', 'reality labs', 'workplace'],
-                'executives': ['mark zuckerberg', 'sheryl sandberg', 'david wehner'],
-                'aliases': ['meta', '$meta', 'fb', '$fb'],
-                'sector_keywords': ['social media', 'virtual reality', 'metaverse', 'advertising'],
-                'negative_keywords': ['meta tag', 'metadata']
-            },
             'NFLX': {
                 'names': ['netflix', 'netflix inc', 'los gatos', 'reed hastings'],
                 'products': ['streaming', 'netflix originals', 'netflix series', 'netflix movies'],
@@ -143,7 +134,25 @@ class TickerNewsValidator:
                 'aliases': ['nflx', '$nflx'],
                 'sector_keywords': ['streaming', 'entertainment', 'content', 'subscription'],
                 'negative_keywords': []
-            }
+            },
+            'INTC': {
+                'names': ['intel', 'intel corp', 'santa clara', 'pat gelsinger'],
+                'products': ['core', 'xeon', 'arc', 'intel foundry', 'altera', 'intel evo', 
+                            'intel processors', 'movidius', 'optane', 'intel gaudi'],
+                'executives': ['pat gelsinger', 'david zinsner', 'michelle johnston holthaus'],
+                'aliases': ['intc', '$intc'],
+                'sector_keywords': ['semiconductor', 'chip', 'processor', 'cpu', 'ai', 'foundry'],
+                'negative_keywords': ['intel inside slogan', 'intel community']
+            },
+            'QCOM': {
+                'names': ['qualcomm', 'qualcomm inc', 'san diego', 'cristiano amon'],
+                'products': ['snapdragon', 'qcc', 'fastconnect', 'adreno', 'rf systems', 'qualcomm ai', 
+                            'automotive platforms', '5g modems', 'hexagon dsp'],
+                'executives': ['cristiano amon', 'akash palkhiwala', 'alex rogers'],
+                'aliases': ['qcom', '$qcom'],
+                'sector_keywords': ['semiconductor', 'chip', 'wireless', '5g', 'ai', 'iot', 'automotive'],
+                'negative_keywords': ['qualcomm stadium']
+            },
         }
         
         # Validation statistics

@@ -25,14 +25,15 @@ research:
     
   # Study parameters (6+ years for robust analysis)
   study_period:
-    start_date: '2018-01-01'
-    end_date: '2024-01-31'
-    validation_cutoff: '2022-04-01'  # 70% train, 20% val, 10% test
-    test_cutoff: '2023-06-22'
+    start_date: '2016-01-01'
+    end_date: '2024-12-31'
+    validation_cutoff: '2023-03-01'  # ≈70% train, ≈20% val
+    test_cutoff: '2024-03-01'        # ≈10% test
+
     
   # Asset universe (diversified for generalizability)
   assets:
-    symbols: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'NFLX']
+    symbols: ['AAPL', 'MSFT', 'AMZN', 'GOOGL', 'TSLA', 'NFLX', 'NVDA', 'INTC', 'QCOM']
     sectors: ['Technology', 'Consumer Discretionary']
     market_cap: 'Large Cap'
     
@@ -72,9 +73,9 @@ pipeline:
 data:
   # Core financial data
   core:
-    symbols: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'NFLX']
-    start_date: '2018-01-01'
-    end_date: '2024-01-31'
+    symbols: ['AAPL', 'MSFT', 'AMZN', 'GOOGL', 'TSLA', 'NFLX', 'NVDA', 'INTC', 'QCOM']
+    start_date: '2016-01-01'
+    end_date: '2024-12-31'
     target_horizons: [5, 22, 90]  # Academic standard
     
     # Data sources
