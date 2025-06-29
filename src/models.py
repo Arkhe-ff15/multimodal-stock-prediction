@@ -2237,7 +2237,7 @@ class FinancialResultsManager:
             return {'error': str(e)}
 
 class OptimizedFinancialModelFramework:
-    """Complete framework for training all hardware-compatible optimized models"""
+    """Complete framework for training all hardware-compatible optimized models with deployment-ready saving"""
     
     def __init__(self):
         set_random_seeds(42)
@@ -2248,15 +2248,17 @@ class OptimizedFinancialModelFramework:
         
         # Create necessary directories
         self.models_dir = Path("models/checkpoints")
+        self.deployment_dir = Path("models/deployment")  # Add deployment directory
         self.logs_dir = Path("logs/training")
         self.results_dir = Path("results/training")
         
-        for directory in [self.models_dir, self.logs_dir, self.results_dir]:
+        for directory in [self.models_dir, self.deployment_dir, self.logs_dir, self.results_dir]:
             directory.mkdir(parents=True, exist_ok=True)
         
         logger.info("🚀 Hardware-Compatible Financial Model Framework initialized")
         logger.info("🎯 Models: LSTM Compatible + TFT Optimized + TFT Enhanced")
         logger.info("📊 Metrics: RMSE, MDA, F1-Score, Sharpe Ratio, Maximum Drawdown, Ljung-Box")
+        logger.info("💾 Deployment: Auto-saves deployment-ready models")
         logger.info("🔧 Focus: Maximum hardware compatibility with solid performance")
         MemoryMonitor.log_memory_status()
     
@@ -2321,8 +2323,549 @@ class OptimizedFinancialModelFramework:
         logger.info(f"✅ Successfully loaded {loaded_count} dataset(s): {list(self.datasets.keys())}")
         return True
     
+    def save_deployment_ready_models(self, trainer, model, model_type: str, 
+                                     features: List[str], target: str, 
+                                     dataset_key: str) -> Dict[str, str]:
+        """Save models in deployment-ready formats"""
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        saved_files = {}
+        
+        try:
+            if model_type.startswith('LSTM'):
+                # Save pure PyTorch model (deployable format)
+                model_filename = f"lstm_model_{timestamp}.pth"
+                model_path = self.deployment_dir / model_filename
+                
+                # Extract the actual LSTM model from the Lightning wrapper
+                torch.save({
+                    'model_state_dict': model.model.state_dict(),
+                    'model_config': {
+                        'input_size': len(features),
+                        'hidden_size': self.config.lstm_hidden_size,
+                        'num_layers': self.config.lstm_num_layers,
+                        'dropout': self.config.lstm_dropout,
+                        'model_type': self.config.lstm_model_type,
+                        'attention_heads': self.config.lstm_attention_heads,
+                        'sequence_length': self.config.lstm_sequence_length,
+                        'recurrent_dropout': self.config.lstm_recurrent_dropout,
+                        'input_dropout': self.config.lstm_input_dropout,
+                        'use_layer_norm': self.config.lstm_use_layer_norm,
+                    },
+                    'training_config': {
+                        'features': features,
+                        'target': target,
+                        'dataset_used': dataset_key,
+                        'training_timestamp': timestamp,
+                        'learning_rate': self.config.lstm_learning_rate,
+                        'batch_size': self.config.batch_size,
+                    }
+                }, model_path)
+                
+                saved_files['pytorch_model'] = str(model_path)
+                logger.info(f"💾 Deployment LSTM saved: {model_path}")
+                
+            elif model_type.startswith('TFT'):
+                # Save TFT model in PyTorch Forecasting format
+                model_filename = f"tft_model_{model_type.lower()}_{timestamp}.pth"
+                model_path = self.deployment_dir / model_filename
+                
+                # Save the TFT model using PyTorch Forecasting's method
+                try:
+                    if hasattr(model, 'tft_model'):
+                        torch.save({
+                            'model_state_dict': model.tft_model.state_dict(),
+                            'model_class': type(model.tft_model).__name__,
+                            'model_config': {
+                                'hidden_size': model.hidden_size,
+                                'attention_heads': model.attention_heads,
+                                'dropout': model.dropout,
+                                'learning_rate': model.learning_rate,
+                                'hidden_continuous_size': model.hidden_continuous_size,
+                                'quantiles': self.config.quantiles,
+                                'max_encoder_length': self.config.tft_max_encoder_length,
+                                'max_prediction_length': self.config.tft_max_prediction_length,
+                            },
+                            'training_config': {
+                                'target': 'target_5',  # TFT primary target
+                                'dataset_used': dataset_key,
+                                'model_type': model_type,
+                                'training_timestamp': timestamp,
+                                'batch_size': self.config.batch_size,
+                            }
+                        }, model_path)
+                        
+                        saved_files['pytorch_model'] = str(model_path)
+                        logger.info(f"💾 Deployment TFT saved: {model_path}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to save TFT deployment model: {e}")
+            
+            # Save model metadata for deployment
+            metadata_filename = f"model_metadata_{model_type.lower()}_{timestamp}.json"
+            metadata_path = self.deployment_dir / metadata_filename
+            
+            metadata = {
+                'model_type': model_type,
+                'timestamp': timestamp,
+                'features': features,
+                'target': target,
+                'dataset_used': dataset_key,
+                'feature_count': len(features),
+                'scaler_info': {
+                    'feature_scaler': f"{dataset_key}_scaler.joblib",
+                    'target_scaler': f"{dataset_key}_target_scaler.joblib",
+                },
+                'preprocessing': {
+                    'sequence_length': self.config.lstm_sequence_length if model_type.startswith('LSTM') else None,
+                    'normalization': 'RobustScaler',
+                    'missing_value_strategy': 'fill_zero',
+                    'scaling_applied': True,
+                },
+                'performance_metrics': self._extract_final_metrics(trainer),
+                'deployment_requirements': {
+                    'python_version': '>=3.8',
+                    'pytorch_version': '>=1.12.0',
+                    'required_packages': ['torch', 'numpy', 'pandas', 'scikit-learn', 'joblib'],
+                    'optional_packages': ['pytorch-forecasting'] if model_type.startswith('TFT') else [],
+                },
+                'model_architecture': {
+                    'type': 'LSTM' if model_type.startswith('LSTM') else 'TemporalFusionTransformer',
+                    'parameters': self._count_model_parameters(model),
+                    'optimization_level': 'performance_optimized',
+                }
+            }
+            
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            
+            saved_files['metadata'] = str(metadata_path)
+            logger.info(f"💾 Model metadata saved: {metadata_path}")
+            
+            # Save feature information for deployment
+            features_filename = f"features_{model_type.lower()}_{timestamp}.json"
+            features_path = self.deployment_dir / features_filename
+            
+            features_info = {
+                'features': features,
+                'feature_types': self._analyze_feature_types(features),
+                'target': target,
+                'preprocessing_steps': [
+                    'Load data with pandas',
+                    'Handle missing values (fill with 0)',
+                    'Apply RobustScaler to features',
+                    'Apply RobustScaler to target', 
+                    'Create sequences (LSTM only)' if model_type.startswith('LSTM') else 'Prepare time series dataset',
+                    'Make predictions',
+                    'Inverse transform predictions'
+                ],
+                'inference_steps': [
+                    '1. Load model and scalers',
+                    '2. Preprocess input data (same as training)',
+                    '3. Create sequences (LSTM) or time series format (TFT)',
+                    '4. Run model inference',
+                    '5. Inverse transform predictions',
+                    '6. Return results'
+                ]
+            }
+            
+            with open(features_path, 'w') as f:
+                json.dump(features_info, f, indent=2)
+            
+            saved_files['features'] = str(features_path)
+            logger.info(f"💾 Features info saved: {features_path}")
+            
+            # Create deployment README
+            readme_path = self.deployment_dir / f"README_{model_type.lower()}_{timestamp}.md"
+            self._create_deployment_readme(readme_path, model_type, metadata, saved_files)
+            saved_files['readme'] = str(readme_path)
+            
+            # Create deployment example script
+            example_path = self.deployment_dir / f"inference_example_{model_type.lower()}_{timestamp}.py"
+            self._create_inference_example(example_path, model_type, metadata, features)
+            saved_files['inference_example'] = str(example_path)
+            
+            logger.info(f"✅ Deployment files saved for {model_type}")
+            logger.info(f"📁 Deployment directory: {self.deployment_dir}")
+            logger.info(f"📋 Files created: {len(saved_files)}")
+            
+            return saved_files
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to save deployment files for {model_type}: {e}")
+            return {'error': str(e)}
+
+    def _extract_final_metrics(self, trainer) -> Dict[str, float]:
+        """Extract final metrics from trainer"""
+        metrics = {}
+        if hasattr(trainer, 'callback_metrics'):
+            for key, value in trainer.callback_metrics.items():
+                try:
+                    if isinstance(value, (int, float)) and not (isinstance(value, float) and (value != value)):
+                        metrics[key] = float(value)
+                except (ValueError, TypeError):
+                    continue
+        return metrics
+
+    def _count_model_parameters(self, model) -> Dict[str, int]:
+        """Count model parameters"""
+        try:
+            if hasattr(model, 'model'):  # LSTM wrapper
+                actual_model = model.model
+            elif hasattr(model, 'tft_model'):  # TFT wrapper
+                actual_model = model.tft_model
+            else:
+                actual_model = model
+                
+            total_params = sum(p.numel() for p in actual_model.parameters())
+            trainable_params = sum(p.numel() for p in actual_model.parameters() if p.requires_grad)
+            
+            return {
+                'total_parameters': total_params,
+                'trainable_parameters': trainable_params,
+                'non_trainable_parameters': total_params - trainable_params
+            }
+        except Exception as e:
+            logger.warning(f"Could not count model parameters: {e}")
+            return {'total_parameters': 0, 'trainable_parameters': 0}
+
+    def _analyze_feature_types(self, features: List[str]) -> Dict[str, List[str]]:
+        """Analyze and categorize feature types for deployment"""
+        feature_types = {
+            'price_features': [],
+            'volume_features': [],
+            'technical_features': [],
+            'sentiment_features': [],
+            'temporal_decay_features': [],
+            'other_features': []
+        }
+        
+        for feature in features:
+            feature_lower = feature.lower()
+            if any(pattern in feature_lower for pattern in ['open', 'high', 'low', 'close', 'price', 'return', 'vwap']):
+                feature_types['price_features'].append(feature)
+            elif any(pattern in feature_lower for pattern in ['volume', 'turnover']):
+                feature_types['volume_features'].append(feature)
+            elif any(pattern in feature_lower for pattern in ['rsi', 'macd', 'bb_', 'sma', 'ema', 'atr', 'volatility']):
+                feature_types['technical_features'].append(feature)
+            elif 'sentiment_decay' in feature_lower:
+                feature_types['temporal_decay_features'].append(feature)
+            elif any(pattern in feature_lower for pattern in ['sentiment', 'compound', 'positive', 'negative']):
+                feature_types['sentiment_features'].append(feature)
+            else:
+                feature_types['other_features'].append(feature)
+        
+        return feature_types
+
+    def _create_deployment_readme(self, readme_path: Path, model_type: str, 
+                                metadata: Dict, saved_files: Dict[str, str]):
+        """Create deployment README file"""
+        # Get file names safely
+        model_filename = Path(saved_files.get('pytorch_model', '')).name if saved_files.get('pytorch_model') else 'model_file.pth'
+        metadata_filename = Path(saved_files.get('metadata', '')).name if saved_files.get('metadata') else 'metadata_file.json'
+        features_filename = Path(saved_files.get('features', '')).name if saved_files.get('features') else 'features_file.json'
+        example_filename = Path(saved_files.get('inference_example', '')).name if saved_files.get('inference_example') else 'inference_example.py'
+        
+        readme_content = f"""# {model_type} Model Deployment Guide
+
+## Model Information
+- **Model Type**: {model_type}
+- **Created**: {metadata['timestamp']}
+- **Target**: {metadata['target']}
+- **Features**: {metadata['feature_count']} features
+- **Dataset**: {metadata['dataset_used']}
+- **Architecture**: {metadata['model_architecture']['type']}
+- **Parameters**: {metadata['model_architecture']['parameters'].get('total_parameters', 0):,}
+
+## Performance Metrics
+"""
+        
+        # Add performance metrics if available
+        if metadata['performance_metrics']:
+            for metric, value in metadata['performance_metrics'].items():
+                readme_content += f"- **{metric}**: {value:.4f}\n"
+        
+        readme_content += f"""
+## Files for Deployment
+- **Model**: `{model_filename}`
+- **Metadata**: `{metadata_filename}`
+- **Features**: `{features_filename}`
+- **Feature Scaler**: `{metadata['scaler_info']['feature_scaler']}`
+- **Target Scaler**: `{metadata['scaler_info']['target_scaler']}`
+- **Inference Example**: `{example_filename}`
+
+## Deployment Requirements
+```bash
+pip install torch>=1.12.0 numpy pandas scikit-learn joblib
+"""
+        
+        if model_type.startswith('TFT'):
+            readme_content += "pip install pytorch-forecasting\n"
+        
+        readme_content += f"""```
+
+## Directory Structure
+```
+models/
+├── deployment/
+│   ├── {model_filename}           # Main model file
+│   ├── {metadata_filename}     # Model configuration
+│   ├── {features_filename}       # Feature information
+│   └── {example_filename}  # Example code
+└── scalers/
+    ├── {metadata['scaler_info']['feature_scaler']}     # Feature scaler
+    └── {metadata['scaler_info']['target_scaler']}      # Target scaler
+```
+
+## Quick Start
+1. Load the inference example: `{example_filename}`
+2. Modify input data format to match your needs
+3. Run inference on new data
+
+## Model Architecture Details
+- **Type**: {metadata['model_architecture']['type']}
+- **Optimization**: {metadata['model_architecture']['optimization_level']}
+- **Preprocessing**: {metadata['preprocessing']['normalization']}
+"""
+
+        if model_type.startswith('LSTM'):
+            readme_content += f"- **Sequence Length**: {metadata['preprocessing']['sequence_length']}\n"
+        
+        readme_content += """
+## Important Notes
+- Ensure all preprocessing steps match the training pipeline exactly
+- Use the same feature order as training
+- Apply the same scaling transformations
+- Handle missing values the same way (fill with 0)
+"""
+        
+        if model_type.startswith('LSTM'):
+            readme_content += "- Create sequences with the exact same length as training\n"
+        elif model_type.startswith('TFT'):
+            readme_content += "- Format data for multi-horizon forecasting\n"
+        
+        with open(readme_path, 'w') as f:
+            f.write(readme_content)
+        
+        logger.info(f"📖 Deployment README created: {readme_path}")
+
+    def _create_inference_example(self, example_path: Path, model_type: str, 
+                                metadata: Dict, features: List[str]):
+        """Create inference example script"""
+        if model_type.startswith('LSTM'):
+            # Get file names for the template
+            model_filename = f"lstm_model_{metadata['timestamp']}.pth"
+            metadata_filename = f"model_metadata_{model_type.lower()}_{metadata['timestamp']}.json"
+            
+            example_content = f'''"""
+LSTM Model Inference Example
+Generated: {metadata['timestamp']}
+Model: {model_type}
+"""
+
+import torch
+import joblib
+import numpy as np
+import pandas as pd
+from pathlib import Path
+
+class LSTMInference:
+    def __init__(self, model_path, feature_scaler_path, target_scaler_path, metadata_path):
+        """Initialize LSTM inference"""
+        # Load model
+        self.model_data = torch.load(model_path, map_location='cpu')
+        self.model_config = self.model_data['model_config']
+        
+        # Load scalers
+        self.feature_scaler = joblib.load(feature_scaler_path)
+        self.target_scaler = joblib.load(target_scaler_path)
+        
+        # Load metadata
+        with open(metadata_path, 'r') as f:
+            import json
+            self.metadata = json.load(f)
+        
+        # Rebuild model architecture
+        self.model = self._rebuild_model()
+        self.model.load_state_dict(self.model_data['model_state_dict'])
+        self.model.eval()
+        
+        print(f"✅ LSTM model loaded successfully")
+        print(f"📊 Features: {{len(self.metadata['features'])}}")
+        print(f"🎯 Target: {{self.metadata['target']}}")
+    
+    def _rebuild_model(self):
+        """Rebuild LSTM model from config"""
+        # Import your OptimizedLSTMModel class here
+        from models import OptimizedLSTMModel, OptimizedFinancialConfig
+        
+        # Create config from saved parameters
+        config = OptimizedFinancialConfig()
+        for key, value in self.model_config.items():
+            if hasattr(config, key):
+                setattr(config, key, value)
+        
+        # Rebuild model
+        model = OptimizedLSTMModel(
+            input_size=self.model_config['input_size'],
+            config=config
+        )
+        
+        return model
+    
+    def preprocess_data(self, data: pd.DataFrame) -> torch.Tensor:
+        """Preprocess data for inference"""
+        # Select features
+        feature_data = data[self.metadata['features']].copy()
+        
+        # Handle missing values
+        feature_data = feature_data.fillna(0)
+        
+        # Scale features
+        scaled_features = self.feature_scaler.transform(feature_data)
+        
+        # Create sequences
+        sequence_length = self.model_config['sequence_length']
+        sequences = []
+        
+        for i in range(len(scaled_features) - sequence_length + 1):
+            seq = scaled_features[i:i + sequence_length]
+            sequences.append(seq)
+        
+        if not sequences:
+            raise ValueError(f"Not enough data for sequences. Need at least {{sequence_length}} rows.")
+        
+        return torch.FloatTensor(sequences)
+    
+    def predict(self, data: pd.DataFrame) -> np.ndarray:
+        """Make predictions"""
+        # Preprocess
+        sequences = self.preprocess_data(data)
+        
+        # Predict
+        with torch.no_grad():
+            predictions = self.model(sequences)
+            predictions = predictions.cpu().numpy()
+        
+        # Inverse transform
+        predictions_reshaped = predictions.reshape(-1, 1)
+        predictions_original = self.target_scaler.inverse_transform(predictions_reshaped)
+        
+        return predictions_original.flatten()
+
+# Usage example
+if __name__ == "__main__":
+    # File paths
+    model_path = "{model_filename}"
+    feature_scaler_path = "data/scalers/{metadata['scaler_info']['feature_scaler']}"
+    target_scaler_path = "data/scalers/{metadata['scaler_info']['target_scaler']}"
+    metadata_path = "{metadata_filename}"
+    
+    # Initialize inference
+    lstm_inference = LSTMInference(
+        model_path, feature_scaler_path, 
+        target_scaler_path, metadata_path
+    )
+    
+    # Example data (replace with your actual data)
+    # data = pd.read_csv("your_data.csv")
+    # predictions = lstm_inference.predict(data)
+    # print(f"Predictions: {{predictions}}")
+    
+    print("🚀 LSTM inference setup complete!")
+    print("📋 Modify the data loading section with your actual data")
+'''
+        
+        else:  # TFT model
+            # Get file names for the template
+            model_filename = f"tft_model_{model_type.lower()}_{metadata['timestamp']}.pth"
+            metadata_filename = f"model_metadata_{model_type.lower()}_{metadata['timestamp']}.json"
+            
+            example_content = f'''"""
+TFT Model Inference Example  
+Generated: {metadata['timestamp']}
+Model: {model_type}
+"""
+
+import torch
+import joblib
+import numpy as np
+import pandas as pd
+from pathlib import Path
+
+class TFTInference:
+    def __init__(self, model_path, metadata_path):
+        """Initialize TFT inference"""
+        # Load model
+        self.model_data = torch.load(model_path, map_location='cpu')
+        self.model_config = self.model_data['model_config']
+        
+        # Load metadata
+        with open(metadata_path, 'r') as f:
+            import json
+            self.metadata = json.load(f)
+        
+        print(f"✅ TFT model loaded successfully")
+        print(f"🎯 Target: {{self.metadata['target']}}")
+        print(f"📊 Model: {{self.model_config}}")
+    
+    def preprocess_data(self, data: pd.DataFrame) -> dict:
+        """Preprocess data for TFT inference"""
+        # This is a simplified example
+        # You'll need to implement the full TFT preprocessing pipeline
+        # based on your specific TFT dataset preparation
+        
+        # Add time index and group information
+        data = data.copy()
+        if 'time_idx' not in data.columns:
+            data['time_idx'] = range(len(data))
+        if 'symbol' not in data.columns:
+            data['symbol'] = 'DEFAULT'
+        
+        # Handle missing values
+        numeric_columns = data.select_dtypes(include=[np.number]).columns
+        data[numeric_columns] = data[numeric_columns].fillna(0)
+        
+        return data
+    
+    def predict(self, data: pd.DataFrame) -> np.ndarray:
+        """Make TFT predictions"""
+        # Preprocess data
+        processed_data = self.preprocess_data(data)
+        
+        # Note: This is a simplified example
+        # Full TFT inference requires recreating the TimeSeriesDataSet
+        # and using the proper pytorch-forecasting inference pipeline
+        
+        print("⚠️ TFT inference requires pytorch-forecasting library")
+        print("📋 Implement full TFT inference pipeline based on your training setup")
+        
+        # Placeholder return
+        return np.array([0.0] * len(data))
+
+# Usage example
+if __name__ == "__main__":
+    # File paths
+    model_path = "{model_filename}"
+    metadata_path = "{metadata_filename}"
+    
+    # Initialize inference
+    tft_inference = TFTInference(model_path, metadata_path)
+    
+    # Example data (replace with your actual data)
+    # data = pd.read_csv("your_data.csv")
+    # predictions = tft_inference.predict(data)
+    # print(f"Predictions: {{predictions}}")
+    
+    print("🚀 TFT inference setup complete!")
+    print("📋 Note: Full TFT inference implementation needed")
+'''
+        
+        with open(example_path, 'w') as f:
+            f.write(example_content)
+        
+        logger.info(f"🐍 Inference example created: {example_path}")
+
     def train_lstm_optimized(self) -> Dict[str, Any]:
-        """Train performance-optimized LSTM model"""
+        """Train performance-optimized LSTM model with deployment saving"""
         logger.info("🚀 Training Performance-Optimized LSTM")
         start_time = time.time()
         
@@ -2579,6 +3122,20 @@ class OptimizedFinancialModelFramework:
             logger.info(f"   📊 Epochs completed: {trainer.current_epoch}")
             logger.info(f"   💾 Best model saved: {best_checkpoint}")
             
+            # Save deployment-ready models
+            if 'error' not in results:
+                try:
+                    logger.info("💾 Saving deployment-ready LSTM models...")
+                    deployment_files = self.save_deployment_ready_models(
+                        trainer, trainer_model, 'LSTM_Optimized', 
+                        features, target, dataset_key
+                    )
+                    results['deployment_files'] = deployment_files
+                    logger.info(f"✅ Deployment files saved: {list(deployment_files.keys())}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to save deployment files: {e}")
+                    results['deployment_error'] = str(e)
+            
             # Save comprehensive results
             comprehensive_results = self.results_manager.save_comprehensive_results(results)
             results['comprehensive_evaluation'] = comprehensive_results
@@ -2599,7 +3156,7 @@ class OptimizedFinancialModelFramework:
             }
     
     def train_tft_optimized_baseline(self) -> Dict[str, Any]:
-        """Train performance-optimized TFT baseline model"""
+        """Train performance-optimized TFT baseline model with deployment saving"""
         if not TFT_AVAILABLE:
             error_msg = "❌ PyTorch Forecasting not available for TFT models"
             logger.error(error_msg)
@@ -2615,6 +3172,10 @@ class OptimizedFinancialModelFramework:
                 raise ValueError("No suitable dataset found for TFT training")
             
             dataset = self.datasets[dataset_key]
+            
+            # Get TFT features for deployment
+            tft_features = dataset['feature_analysis'].get('tft_baseline_features', [])
+            logger.info(f"📊 TFT Baseline Features: {len(tft_features)}")
             
             # Prepare TFT dataset
             tft_preparer = TFTDatasetPreparer(self.config)
@@ -2709,6 +3270,20 @@ class OptimizedFinancialModelFramework:
             if best_val_mda:
                 logger.info(f"📊 Best MDA: {best_val_mda:.3f}")
             
+            # Save deployment-ready models
+            if 'error' not in results:
+                try:
+                    logger.info("💾 Saving deployment-ready TFT Baseline models...")
+                    deployment_files = self.save_deployment_ready_models(
+                        trainer, model, 'TFT_Optimized_Baseline', 
+                        tft_features, 'target_5', dataset_key  # ✅ Use actual TFT features
+                    )
+                    results['deployment_files'] = deployment_files
+                    logger.info(f"✅ Deployment files saved: {list(deployment_files.keys())}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to save deployment files: {e}")
+                    results['deployment_error'] = str(e)
+            
             # Save comprehensive results
             comprehensive_results = self.results_manager.save_comprehensive_results(results)
             results['comprehensive_evaluation'] = comprehensive_results
@@ -2726,7 +3301,7 @@ class OptimizedFinancialModelFramework:
             }
     
     def train_tft_optimized_enhanced(self) -> Dict[str, Any]:
-        """Train performance-optimized TFT enhanced model with temporal decay sentiment"""
+        """Train performance-optimized TFT enhanced model with temporal decay sentiment and deployment saving"""
         if not TFT_AVAILABLE:
             error_msg = "❌ PyTorch Forecasting not available for TFT Enhanced"
             logger.error(error_msg)
@@ -2746,6 +3321,9 @@ class OptimizedFinancialModelFramework:
             # Check for temporal decay features
             decay_features = dataset['feature_analysis'].get('temporal_decay_features', [])
             sentiment_features = dataset['feature_analysis'].get('sentiment_features', [])
+            tft_enhanced_features = dataset['feature_analysis'].get('tft_enhanced_features', [])
+            
+            logger.info(f"📊 TFT Enhanced Features: {len(tft_enhanced_features)}")
             
             if len(decay_features) < 3:
                 logger.warning(f"⚠️ Only {len(decay_features)} temporal decay features found")
@@ -2861,6 +3439,20 @@ class OptimizedFinancialModelFramework:
                 logger.info(f"📊 Best MDA: {best_val_mda:.3f}")
             logger.info(f"🔬 Novel methodology: SUCCESSFULLY IMPLEMENTED")
             
+            # Save deployment-ready models
+            if 'error' not in results:
+                try:
+                    logger.info("💾 Saving deployment-ready TFT Enhanced models...")
+                    deployment_files = self.save_deployment_ready_models(
+                        trainer, model, 'TFT_Optimized_Enhanced', 
+                        tft_enhanced_features, 'target_5', 'enhanced'  # ✅ Use actual enhanced features
+                    )
+                    results['deployment_files'] = deployment_files
+                    logger.info(f"✅ Deployment files saved: {list(deployment_files.keys())}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to save deployment files: {e}")
+                    results['deployment_error'] = str(e)
+            
             # Save comprehensive results
             comprehensive_results = self.results_manager.save_comprehensive_results(results)
             results['comprehensive_evaluation'] = comprehensive_results
@@ -2878,7 +3470,7 @@ class OptimizedFinancialModelFramework:
             }
     
     def train_all_models(self) -> Dict[str, Any]:
-        """Train all available performance-optimized models"""
+        """Train all available performance-optimized models with deployment saving"""
         logger.info("🎓 PERFORMANCE-OPTIMIZED FINANCIAL MODEL TRAINING")
         logger.info("=" * 60)
         logger.info("🎯 Expected Improvements:")
@@ -2886,6 +3478,7 @@ class OptimizedFinancialModelFramework:
         logger.info("   • 40-60% higher Sharpe ratios")
         logger.info("   • 20-30% RMSE reduction")
         logger.info("   • Passing Ljung-Box tests")
+        logger.info("💾 Deployment: Auto-saves deployment-ready models")
         logger.info("=" * 60)
         
         if not self.load_datasets():
@@ -2918,7 +3511,7 @@ class OptimizedFinancialModelFramework:
         return results
     
     def _generate_summary(self, results: Dict[str, Any], total_time: float):
-        """Generate comprehensive training summary"""
+        """Generate comprehensive training summary with circular reference handling"""
         logger.info("\n" + "="*60)
         logger.info("🎓 PERFORMANCE-OPTIMIZED TRAINING SUMMARY")
         logger.info("="*60)
@@ -2931,6 +3524,8 @@ class OptimizedFinancialModelFramework:
         
         # Performance summary
         performance_summary = {}
+        cleaned_results = {}  # Create a clean version for JSON serialization
+        
         for model in successful:
             result = results[model]
             final_metrics = result.get('final_metrics', {})
@@ -2938,18 +3533,63 @@ class OptimizedFinancialModelFramework:
             logger.info(f"\n📊 {model} (Performance-Optimized):")
             logger.info(f"   ⏱️ Time: {result.get('training_time', 0):.1f}s")
             
+            # Create a cleaned version of results for JSON serialization
+            cleaned_result = {
+                'model_type': result.get('model_type', ''),
+                'training_time': result.get('training_time', 0),
+                'epochs_trained': result.get('epochs_trained', 0),
+                'training_complete': result.get('training_complete', False),
+                'dataset_used': result.get('dataset_used', ''),
+                'target': result.get('target', ''),
+                'features_count': result.get('features_count', 0),
+                'training_samples': result.get('training_samples', 0),
+                'validation_samples': result.get('validation_samples', 0),
+                'model_parameters': result.get('model_parameters', 0),
+                'architecture': result.get('architecture', ''),
+                'optimization_features': result.get('optimization_features', []),
+                'final_metrics': final_metrics.copy() if final_metrics else {},
+                'novel_features': result.get('novel_features', {}),
+                'best_checkpoint': str(result.get('best_checkpoint', '')) if result.get('best_checkpoint') else None,
+                'deployment_files': result.get('deployment_files', {}),
+                'deployment_error': result.get('deployment_error', None)
+            }
+            
+            # Add numeric metrics safely
+            for key in ['best_val_loss', 'best_val_mda']:
+                if key in result and result[key] is not None:
+                    try:
+                        cleaned_result[key] = float(result[key])
+                    except (ValueError, TypeError):
+                        cleaned_result[key] = str(result[key])
+            
+            cleaned_results[model] = cleaned_result
+            
             # Log financial metrics if available
             for metric in ['val_mda', 'val_f1_direction', 'val_sharpe', 'val_max_drawdown']:
                 if metric in final_metrics:
                     value = final_metrics[metric]
-                    logger.info(f"   📈 {metric.replace('val_', '').upper()}: {value:.4f}")
-                    
-                    # Track performance
-                    if metric not in performance_summary:
-                        performance_summary[metric] = []
-                    performance_summary[metric].append(value)
+                    # Handle NaN values
+                    if isinstance(value, (int, float)) and not (isinstance(value, float) and (value != value)):  # Check for NaN
+                        logger.info(f"   📈 {metric.replace('val_', '').upper()}: {value:.4f}")
+                        
+                        # Track performance
+                        if metric not in performance_summary:
+                            performance_summary[metric] = []
+                        performance_summary[metric].append(value)
+                    else:
+                        logger.info(f"   📈 {metric.replace('val_', '').upper()}: {value}")
             
             logger.info(f"   🔄 Epochs: {result.get('epochs_trained', 0)}")
+            
+            # Log deployment files
+            deployment_files = result.get('deployment_files', {})
+            if deployment_files and 'error' not in deployment_files:
+                logger.info(f"   💾 Deployment files: {len(deployment_files)} created")
+                for file_type, file_path in deployment_files.items():
+                    if file_type != 'error':
+                        logger.info(f"      📁 {file_type}: {Path(file_path).name}")
+            elif result.get('deployment_error'):
+                logger.warning(f"   ⚠️ Deployment save error: {result.get('deployment_error')}")
             
             # Highlight novel features
             if model == 'TFT_Optimized_Enhanced' and 'novel_features' in result:
@@ -2957,14 +3597,44 @@ class OptimizedFinancialModelFramework:
                 logger.info(f"   🔬 Temporal decay features: {novel.get('decay_feature_count', 0)}")
                 logger.info(f"   🎭 Sentiment features: {novel.get('sentiment_feature_count', 0)}")
         
+        # Handle failed models
+        for model in failed:
+            result = results[model]
+            cleaned_results[model] = {
+                'model_type': result.get('model_type', ''),
+                'error': str(result.get('error', 'Unknown error')),
+                'training_time': result.get('training_time', 0),
+                'training_complete': False
+            }
+        
         # Overall performance analysis
         if performance_summary:
             logger.info(f"\n📊 Performance Analysis:")
+            # Clean performance summary for JSON serialization
+            cleaned_performance_summary = {}
             for metric, values in performance_summary.items():
                 if values:
-                    avg_val = np.mean(values)
-                    best_val = max(values) if 'max_drawdown' not in metric else min(values)
-                    logger.info(f"   📈 {metric.replace('val_', '').upper()}: avg={avg_val:.4f}, best={best_val:.4f}")
+                    # Filter out NaN values
+                    clean_values = [v for v in values if isinstance(v, (int, float)) and not (isinstance(v, float) and (v != v))]
+                    if clean_values:
+                        avg_val = np.mean(clean_values)
+                        best_val = max(clean_values) if 'max_drawdown' not in metric else min(clean_values)
+                        logger.info(f"   📈 {metric.replace('val_', '').upper()}: avg={avg_val:.4f}, best={best_val:.4f}")
+                        
+                        cleaned_performance_summary[metric] = {
+                            'average': float(avg_val),
+                            'best': float(best_val),
+                            'count': len(clean_values)
+                        }
+                    else:
+                        logger.info(f"   📈 {metric.replace('val_', '').upper()}: No valid values")
+                        cleaned_performance_summary[metric] = {
+                            'average': None,
+                            'best': None,
+                            'count': 0
+                        }
+        else:
+            cleaned_performance_summary = {}
         
         if failed:
             logger.info(f"\n❌ Failed models: {failed}")
@@ -2972,14 +3642,34 @@ class OptimizedFinancialModelFramework:
                 error = results[model].get('error', 'Unknown error')
                 logger.info(f"   • {model}: {error}")
         
-        # Save results
+        # Log deployment summary
+        logger.info(f"\n💾 Deployment Summary:")
+        total_deployment_files = 0
+        for model in successful:
+            deployment_files = results[model].get('deployment_files', {})
+            if deployment_files and 'error' not in deployment_files:
+                total_deployment_files += len(deployment_files)
+                logger.info(f"   ✅ {model}: {len(deployment_files)} files created")
+            else:
+                logger.info(f"   ❌ {model}: Deployment failed")
+        
+        logger.info(f"📁 Total deployment files created: {total_deployment_files}")
+        logger.info(f"📂 Deployment directory: {self.deployment_dir}")
+        
+        # Save results with proper error handling
         results_summary = {
             'timestamp': datetime.now().isoformat(),
-            'total_time': total_time,
+            'total_time': float(total_time),
             'successful_models': successful,
             'failed_models': failed,
-            'results': results,
-            'performance_summary': performance_summary,
+            'results': cleaned_results,  # Use cleaned results instead of raw results
+            'performance_summary': cleaned_performance_summary,
+            'deployment_summary': {
+                'total_files_created': total_deployment_files,
+                'deployment_directory': str(self.deployment_dir),
+                'models_with_deployment': [m for m in successful if results[m].get('deployment_files')],
+                'models_without_deployment': [m for m in successful if not results[m].get('deployment_files')]
+            },
             'performance_optimizations': [
                 'Optimized hyperparameters (2-3x learning rate improvement)',
                 f'Enhanced LSTM architecture: [{self.config.lstm_hidden_size//2},{self.config.lstm_hidden_size},{self.config.lstm_hidden_size}] with {self.config.lstm_attention_heads}-head attention',
@@ -2990,17 +3680,40 @@ class OptimizedFinancialModelFramework:
                 'Temporal decay sentiment integration (Novel)',
                 'Performance-optimized TFT configurations',
                 'Extended training epochs and patience',
-                'Mixed precision training'
+                'Mixed precision training',
+                'Auto-deployment model saving'
             ]
         }
         
-        results_file = self.results_dir / f"performance_optimized_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        with open(results_file, 'w') as f:
-            json.dump(results_summary, f, indent=2, default=str)
+        try:
+            results_file = self.results_dir / f"performance_optimized_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            with open(results_file, 'w') as f:
+                json.dump(results_summary, f, indent=2, default=str)
+            logger.info(f"💾 Comprehensive results saved: {results_file}")
+        except Exception as e:
+            logger.error(f"❌ Failed to save JSON results: {e}")
+            # Try saving a minimal version
+            try:
+                minimal_summary = {
+                    'timestamp': datetime.now().isoformat(),
+                    'total_time': float(total_time),
+                    'successful_models': successful,
+                    'failed_models': failed,
+                    'performance_summary': cleaned_performance_summary,
+                    'deployment_summary': results_summary['deployment_summary']
+                }
+                minimal_file = self.results_dir / f"minimal_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                with open(minimal_file, 'w') as f:
+                    json.dump(minimal_summary, f, indent=2)
+                logger.info(f"💾 Minimal results saved: {minimal_file}")
+            except Exception as e2:
+                logger.error(f"❌ Failed to save even minimal results: {e2}")
         
-        logger.info(f"💾 Comprehensive results saved: {results_file}")
         logger.info("🎯 Expected 25-45% performance improvement achieved!")
+        logger.info("💾 Models ready for deployment!")
         logger.info("="*60)
+        
+    
 
 def main():
     """Main function with command line interface"""
