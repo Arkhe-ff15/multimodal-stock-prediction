@@ -1,0 +1,96 @@
+{
+  "model_type": "TFT_Optimized_Enhanced",
+  "timestamp": "20250629_165009",
+  "features": [
+    "low",
+    "volume",
+    "rsi_14",
+    "rsi_21",
+    "macd_line",
+    "macd_signal",
+    "bb_width",
+    "bb_position",
+    "atr",
+    "volatility_20d",
+    "month",
+    "quarter",
+    "sentiment_compound",
+    "sentiment_volatility_5d",
+    "sentiment_decay_22d_compound",
+    "sentiment_decay_22d_negative",
+    "sentiment_decay_22d_article_count",
+    "sentiment_decay_90d_compound",
+    "sentiment_decay_90d_positive",
+    "sentiment_decay_90d_negative",
+    "sentiment_decay_90d_confidence",
+    "log_returns",
+    "intraday_return",
+    "price_position",
+    "rsi_6",
+    "macd_diff",
+    "volume_sma_20",
+    "rsi_14_lag_1",
+    "rsi_14_lag_2",
+    "rsi_14_lag_3",
+    "rsi_14_lag_5",
+    "rsi_14_lag_10",
+    "volume_ratio",
+    "volume_trend",
+    "volume_lag_1",
+    "volume_lag_2",
+    "volume_lag_3",
+    "volume_lag_5",
+    "volume_lag_10",
+    "returns_lag_1",
+    "returns_lag_2",
+    "returns_lag_3",
+    "returns_lag_5",
+    "returns_lag_10",
+    "vwap_lag_3",
+    "day",
+    "month_sin",
+    "month_cos",
+    "day_of_year_cos",
+    "trading_day_of_month",
+    "sentiment_volatility_10d",
+    "sentiment_volatility_20d",
+    "high_confidence_ratio"
+  ],
+  "target": "target_5",
+  "dataset_used": "enhanced",
+  "feature_count": 53,
+  "scaler_info": {
+    "feature_scaler": "enhanced_scaler.joblib",
+    "target_scaler": "enhanced_target_scaler.joblib"
+  },
+  "preprocessing": {
+    "sequence_length": null,
+    "normalization": "RobustScaler",
+    "missing_value_strategy": "fill_zero",
+    "scaling_applied": true
+  },
+  "performance_metrics": {},
+  "deployment_requirements": {
+    "python_version": ">=3.8",
+    "pytorch_version": ">=1.12.0",
+    "required_packages": [
+      "torch",
+      "numpy",
+      "pandas",
+      "scikit-learn",
+      "joblib"
+    ],
+    "optional_packages": [
+      "pytorch-forecasting"
+    ]
+  },
+  "model_architecture": {
+    "type": "TemporalFusionTransformer",
+    "parameters": {
+      "total_parameters": 867564,
+      "trainable_parameters": 867564,
+      "non_trainable_parameters": 0
+    },
+    "optimization_level": "performance_optimized"
+  }
+}

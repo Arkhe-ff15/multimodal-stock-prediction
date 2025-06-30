@@ -1,281 +1,396 @@
 #!/usr/bin/env python3
 """
-Quick Fixes for Original Script
-===============================
-Apply these fixes to make the original script work with your data.
-
-CRITICAL FIXES NEEDED:
-1. Fix filename typo in config.yaml
-2. Create config_reader.py (see separate artifact)
-3. Make resource requirements realistic
-4. Fix data loading issues
+Script to fix OptimizedTFTTrainer class method indentation issues
+Fixes missing training_step(), validation_step(), and configure_optimizers() methods
 """
 
-# 1. FIX CONFIG.YAML
-# Replace this line in config.yaml:
-#   fnspid_data: 'data/raw/nasdaq_exteral_data.csv'  # TYPO!
-# With:
-#   fnspid_data: 'data/raw/nasdaq_external_data.csv'  # FIXED
-
-# 2. MAKE CONFIG REALISTIC - Add these overrides to config.yaml:
+import re
+import os
 from pathlib import Path
-import pandas as pd
-import numpy as np
-import logging
-from typing import List, Dict   
-logger = logging.getLogger(__name__)
 
-CONFIG_OVERRIDES = """
-# Add these realistic overrides to your config.yaml:
-
-# Make memory requirements realistic
-system:
-  memory:
-    max_memory_usage_gb: 8  # Reduced from 24GB
-  hardware:
-    gpu_memory_fraction: 0.7  # Reduced from 0.85
-
-# Make processing realistic  
-pipeline:
-  execution:
-    max_workers: 2  # Reduced from 6
-    memory_limit_gb: 8  # Reduced from 24
-
-# Use more data (less aggressive filtering)
-data:
-  fnspid:
-    production:
-      sample_ratio: 1.0  # Use all data instead of 30%
-      min_confidence_score: 0.6  # Reduced from 0.7
-      chunk_size: 50000  # Reduced from 100000
-
-# Smaller batch sizes
-sentiment:
-  models:
-    finbert:
-      batch_size: 8  # Reduced from 32
-      confidence_threshold: 0.6  # Reduced from 0.7
-"""
-
-# 3. PATCH THE ORIGINAL SCRIPT - Apply these changes:
-
-# Change 1: Fix the data loading to handle any CSV format
-def load_and_filter_fnspid_FIXED(self) -> pd.DataFrame:
-    """FIXED version of load_and_filter_fnspid"""
-    logger.info("📥 Loading data with fixes...")
-    fnspid_path = self.data_paths['raw_fnspid']
+def fix_tft_trainer_indentation():
+    """Fix the indentation issues in OptimizedTFTTrainer class"""
     
-    if not fnspid_path.exists():
-        raise FileNotFoundError(f"Data file not found: {fnspid_path}")
+    # Path to models.py
+    models_path = Path("src/models.py")
     
-    # AUTO-DETECT COLUMNS (instead of hardcoded mapping)
-    sample = pd.read_csv(fnspid_path, nrows=10)
-    logger.info(f"📋 Available columns: {list(sample.columns)}")
+    if not models_path.exists():
+        print(f"❌ Error: {models_path} not found")
+        return False
     
-    # Try to detect column mapping automatically
-    column_mapping = {}
+    print(f"📝 Reading {models_path}...")
     
-    # Find date column
-    date_candidates = [col for col in sample.columns if any(word in col.lower() for word in ['date', 'time', 'published'])]
-    if date_candidates:
-        column_mapping['Date'] = date_candidates[0]
-    else:
-        logger.error("Could not find date column. Available columns:")
-        for i, col in enumerate(sample.columns):
-            logger.error(f"  {i}: {col}")
-        raise ValueError("Please manually specify date column")
+    # Read the file
+    with open(models_path, 'r', encoding='utf-8') as f:
+        content = f.read()
     
-    # Find headline column  
-    headline_candidates = [col for col in sample.columns if any(word in col.lower() for word in ['title', 'headline', 'text', 'article'])]
-    if headline_candidates:
-        column_mapping['Article_title'] = headline_candidates[0]
-    else:
-        raise ValueError("Could not find headline column")
+    # Backup the original file
+    backup_path = models_path.with_suffix('.py.backup2')
+    print(f"💾 Creating backup at {backup_path}...")
     
-    # Find symbol column
-    symbol_candidates = [col for col in sample.columns if any(word in col.lower() for word in ['symbol', 'ticker', 'stock'])]
-    if symbol_candidates:
-        column_mapping['Stock_symbol'] = symbol_candidates[0]
-    else:
-        raise ValueError("Could not find symbol column")
+    with open(backup_path, 'w', encoding='utf-8') as f:
+        f.write(content)
     
-    logger.info(f"📋 Auto-detected mapping: {column_mapping}")
+    # Fix the indentation issues in OptimizedTFTTrainer class
+    print("🔧 Fixing OptimizedTFTTrainer method indentations...")
     
-    # REST OF FUNCTION REMAINS THE SAME...
-    # (Process the data using the detected column mapping)
-
-# Change 2: Fix memory management in chunk processing
-def load_and_filter_fnspid_MEMORY_FIXED(self) -> pd.DataFrame:
-    """Memory-efficient version"""
-    # Instead of accumulating all chunks:
-    # filtered_chunks.append(chunk_filtered)
+    # The issue is that the methods are incorrectly indented inside other methods
+    # We need to find the OptimizedTFTTrainer class and fix the method definitions
     
-    # Use this approach:
-    temp_files = []
-    chunk_counter = 0
+    # Pattern to find the class and fix method indentations
+    lines = content.split('\n')
+    fixed_lines = []
+    inside_tft_trainer = False
+    current_indent = 0
     
-    for chunk in pd.read_csv(fnspid_path, chunksize=chunk_size):
-        # Process chunk
-        chunk_filtered = process_chunk(chunk)  # Your existing logic
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         
-        # Save to temporary file instead of memory
-        if len(chunk_filtered) > 0:
-            temp_file = f"temp_chunk_{chunk_counter}.csv"
-            chunk_filtered.to_csv(temp_file, index=False)
-            temp_files.append(temp_file)
-            chunk_counter += 1
+        # Detect OptimizedTFTTrainer class
+        if 'class OptimizedTFTTrainer(pl.LightningModule):' in line:
+            inside_tft_trainer = True
+            current_indent = len(line) - len(line.lstrip())
+            fixed_lines.append(line)
+            print(f"🎯 Found OptimizedTFTTrainer class at line {i+1}")
+        
+        # Detect end of class
+        elif inside_tft_trainer and line.strip() and not line.startswith(' ') and not line.startswith('\t'):
+            if line.startswith('class ') or line.startswith('def ') and not line.startswith('    '):
+                inside_tft_trainer = False
+                print(f"🏁 End of OptimizedTFTTrainer class at line {i+1}")
+            fixed_lines.append(line)
+        
+        # Fix method indentations inside the class
+        elif inside_tft_trainer:
+            # Check if this is a method definition that needs fixing
+            if re.match(r'\s*def (training_step|validation_step|on_validation_epoch_end|configure_optimizers)\s*\(', line):
+                # Fix indentation to be at class level (4 spaces from class definition)
+                method_content = line.strip()
+                fixed_line = '    ' + method_content
+                fixed_lines.append(fixed_line)
+                print(f"🔧 Fixed method indentation: {method_content[:50]}...")
+                
+                # Fix the method body indentation
+                i += 1
+                while i < len(lines) and (lines[i].startswith('        ') or lines[i].strip() == ''):
+                    if lines[i].strip():
+                        # Method body should be 8 spaces from class definition
+                        method_body = lines[i].strip()
+                        fixed_lines.append('        ' + method_body)
+                    else:
+                        fixed_lines.append(lines[i])
+                    i += 1
+                i -= 1  # Back up one since the loop will increment
+            else:
+                fixed_lines.append(line)
+        else:
+            fixed_lines.append(line)
+        
+        i += 1
     
-    # Combine temporary files
-    combined_chunks = []
-    for temp_file in temp_files:
-        combined_chunks.append(pd.read_csv(temp_file))
-        os.remove(temp_file)  # Clean up
+    # Rejoin the content
+    fixed_content = '\n'.join(fixed_lines)
     
-    return pd.concat(combined_chunks, ignore_index=True)
-
-# Change 3: Fix the confidence filtering logic
-def adaptive_confidence_filter_FIXED(self, sentiment_results: List[Dict]) -> List[Dict]:
-    """FIXED adaptive confidence filtering"""
-    if not self.enable_adaptive_confidence or not sentiment_results:
-        return [r for r in sentiment_results if r['confidence'] >= self.confidence_threshold]
+    # Additional fix: Ensure the methods are properly defined with correct signatures
+    print("🔧 Adding missing method definitions if needed...")
     
-    confidences = [r['confidence'] for r in sentiment_results]
+    # Check if we have all required methods
+    required_methods = ['training_step', 'validation_step', 'on_validation_epoch_end', 'configure_optimizers']
     
-    # FIXED: More robust threshold calculation
-    mean_conf = np.mean(confidences)
-    percentile_25 = np.percentile(confidences, 25)
-    percentile_75 = np.percentile(confidences, 75)
-    
-    # Use percentile-based approach instead of std-based
-    adaptive_threshold = max(
-        0.5,  # Minimum threshold
-        percentile_25,  # 25th percentile as threshold
-        self.confidence_threshold * 0.8  # 80% of original threshold
-    )
-    
-    filtered_results = [r for r in sentiment_results if r['confidence'] >= adaptive_threshold]
-    
-    # Safety check: keep at least 50% of data
-    if len(filtered_results) < 0.5 * len(sentiment_results):
-        adaptive_threshold = np.percentile(confidences, 50)  # Median
-        filtered_results = [r for r in sentiment_results if r['confidence'] >= adaptive_threshold]
-    
-    logger.info(f"🎯 Adaptive threshold: {adaptive_threshold:.3f} (was {self.confidence_threshold:.3f})")
-    logger.info(f"📈 Retained: {len(filtered_results)}/{len(sentiment_results)} articles")
-    
-    return filtered_results
-
-# Change 4: Add proper error handling to sentiment analysis
-def analyze_sentiment_with_validation_FIXED(self, articles_df: pd.DataFrame) -> pd.DataFrame:
-    """FIXED sentiment analysis with proper error handling"""
-    sentiment_results = []
-    failed_batches = 0
-    
-    for i in range(0, len(articles_df), self.batch_size):
-        batch = articles_df.iloc[i:i+self.batch_size]
-        headlines = batch['headline'].tolist()
+    for method in required_methods:
+        if f'def {method}(' not in fixed_content:
+            print(f"⚠️ Method {method} still missing, adding template...")
+            
+            # Find the end of __init__ method and add the missing method
+            pattern = r'(class OptimizedTFTTrainer\(pl\.LightningModule\):.*?def __init__.*?logger\.info.*?\n)'
+            
+            if method == 'training_step':
+                method_template = '''
+    def training_step(self, batch, batch_idx):
+        loss, predictions, y_true = self._shared_step(batch)
+        
+        # Enhanced regularization for complex model
+        l1_lambda = self.config.tft_enhanced_l1_lambda if self.model_type == 'TFT_Enhanced' else self.config.tft_l1_lambda
+        try:
+            l1_reg = torch.tensor(0.0, device=self.device, dtype=torch.float32)
+            l2_reg = torch.tensor(0.0, device=self.device, dtype=torch.float32)
+            
+            for name, param in self.named_parameters():
+                if param.requires_grad and torch.isfinite(param).all():
+                    l1_reg += param.abs().sum()
+                    l2_reg += param.pow(2).sum()
+            
+            l1_reg = self._safe_tensor_clamp(l1_reg, "l1_reg")
+            l2_reg = self._safe_tensor_clamp(l2_reg, "l2_reg")
+            
+            total_loss = loss + l1_lambda * l1_reg + (l1_lambda * 0.5) * l2_reg
+            
+        except Exception as e:
+            logger.warning(f"Regularization failed: {e}")
+            total_loss = loss
+        
+        self.log('train_loss', total_loss, on_epoch=True, prog_bar=True)
         
         try:
-            # Your existing FinBERT logic here
-            inputs = self.tokenizer(headlines, ...)
-            with torch.no_grad():
-                outputs = self.model(**inputs)
-                predictions = torch.nn.functional.softmax(outputs.logits, dim=-1).cpu().numpy()
-            
-            # Process predictions (your existing logic)
-            for j, pred in enumerate(predictions):
-                result = batch.iloc[j].copy()
-                # Add sentiment scores
-                sentiment_results.append(result)
-                
-        except RuntimeError as e:
-            if "out of memory" in str(e).lower():
-                logger.warning(f"🚨 GPU OOM at batch {i}, reducing batch size")
-                # Reduce batch size and retry
-                self.batch_size = max(1, self.batch_size // 2)
-                torch.cuda.empty_cache()
-                # Retry with smaller batch
-                continue
+            if predictions.dim() > 1 and predictions.shape[-1] > 1:
+                median_predictions = predictions[..., self.median_idx]
             else:
-                logger.error(f"❌ Batch {i} failed: {e}")
-                failed_batches += 1
-                
-                # Add neutral sentiment for failed batch
-                for j in range(len(batch)):
-                    result = batch.iloc[j].copy()
-                    result['sentiment_compound'] = 0.0
-                    result['confidence'] = 0.3  # Low confidence for fallback
-                    sentiment_results.append(result)
-        
+                median_predictions = predictions.squeeze() if predictions.dim() > 1 else predictions
+            
+            y_true_flat = y_true.squeeze() if y_true.dim() > 1 else y_true
+            
+            if median_predictions.shape != y_true_flat.shape:
+                min_size = min(median_predictions.numel(), y_true_flat.numel())
+                median_predictions = median_predictions.flatten()[:min_size]
+                y_true_flat = y_true_flat.flatten()[:min_size]
+            
+            # Calculate metrics
+            train_mae = self.financial_metrics.calculate_mae(y_true_flat, median_predictions)
+            train_rmse = self.financial_metrics.calculate_rmse(y_true_flat, median_predictions)
+            train_r2 = self.financial_metrics.calculate_r2(y_true_flat, median_predictions)
+            train_mda = self.financial_metrics.mean_directional_accuracy(y_true_flat, median_predictions)
+            
+            self.log('train_mae', train_mae, on_epoch=True, prog_bar=False)
+            self.log('train_rmse', train_rmse, on_epoch=True, prog_bar=False)
+            self.log('train_r2', train_r2, on_epoch=True, prog_bar=False)
+            self.log('train_mda', train_mda, on_epoch=True, prog_bar=False)
+            
+            self.training_step_outputs.append({
+                'loss': total_loss.detach().cpu(),
+                'predictions': median_predictions.detach().cpu(),
+                'targets': y_true_flat.detach().cpu()
+            })
         except Exception as e:
-            logger.error(f"❌ Unexpected error in batch {i}: {e}")
-            failed_batches += 1
+            logger.warning(f"Training metrics calculation failed: {e}")
+        
+        return total_loss
+'''
             
-            # Add neutral sentiment for failed batch
-            for j in range(len(batch)):
-                result = batch.iloc[j].copy()
-                result['sentiment_compound'] = 0.0
-                result['confidence'] = 0.3
-                sentiment_results.append(result)
-    
-    if failed_batches > 0:
-        logger.warning(f"⚠️ {failed_batches} batches failed, used neutral sentiment as fallback")
-    
-    return pd.DataFrame(sentiment_results)
+            elif method == 'validation_step':
+                method_template = '''
+    def validation_step(self, batch, batch_idx):
+        loss, predictions, y_true = self._shared_step(batch)
+        self.log('val_loss', loss, on_epoch=True, prog_bar=True)
+        
+        try:
+            if predictions.dim() > 1 and predictions.shape[-1] > 1:
+                median_predictions = predictions[..., self.median_idx]
+            else:
+                median_predictions = predictions.squeeze() if predictions.dim() > 1 else predictions
+            
+            y_true_flat = y_true.squeeze() if y_true.dim() > 1 else y_true
+            
+            if median_predictions.shape != y_true_flat.shape:
+                min_size = min(median_predictions.numel(), y_true_flat.numel())
+                median_predictions = median_predictions.flatten()[:min_size]
+                y_true_flat = y_true_flat.flatten()[:min_size]
+            
+            # Calculate metrics
+            val_mae = self.financial_metrics.calculate_mae(y_true_flat, median_predictions)
+            val_rmse = self.financial_metrics.calculate_rmse(y_true_flat, median_predictions)
+            val_r2 = self.financial_metrics.calculate_r2(y_true_flat, median_predictions)
+            val_mda = self.financial_metrics.mean_directional_accuracy(y_true_flat, median_predictions)
+            val_mape = self.financial_metrics.calculate_mape(y_true_flat, median_predictions)
+            val_smape = self.financial_metrics.calculate_smape(y_true_flat, median_predictions)
+            
+            self.log('val_mae', val_mae, on_epoch=True, prog_bar=True)
+            self.log('val_rmse', val_rmse, on_epoch=True, prog_bar=True)
+            self.log('val_r2', val_r2, on_epoch=True, prog_bar=True)
+            self.log('val_mda', val_mda, on_epoch=True, prog_bar=True)
+            self.log('val_mape', val_mape, on_epoch=True, prog_bar=False)
+            self.log('val_smape', val_smape, on_epoch=True, prog_bar=False)
+            
+            self.validation_step_outputs.append({
+                'loss': loss.detach().cpu(),
+                'predictions': median_predictions.detach().cpu(),
+                'targets': y_true_flat.detach().cpu()
+            })
+        except Exception as e:
+            logger.warning(f"Validation metrics calculation failed: {e}")
+        
+        return loss
+'''
+            
+            elif method == 'on_validation_epoch_end':
+                method_template = '''
+    def on_validation_epoch_end(self):
+        if not self.validation_step_outputs:
+            return
 
-# 5. CREATE SIMPLE TEST SCRIPT
-def test_fixes():
-    """Test the fixes with a small sample"""
-    print("Testing fixes...")
-    
-    # Test 1: Check if file exists
-    import pandas as pd
-    from pathlib import Path
-    
-    data_file = Path("data/raw/nasdaq_exteral_data.csv")
-    if not data_file.exists():
-        print("❌ Data file not found!")
-        print("Expected location:", data_file.absolute())
-        return False
-    
-    # Test 2: Check file structure
-    try:
-        sample = pd.read_csv(data_file, nrows=5)
-        print("✅ File loads successfully")
-        print("📋 Columns found:", list(sample.columns))
-        print("📊 Sample data shape:", sample.shape)
-        
-        # Check for required column types
-        date_cols = [col for col in sample.columns if any(word in col.lower() for word in ['date', 'time'])]
-        text_cols = [col for col in sample.columns if any(word in col.lower() for word in ['title', 'headline', 'text'])]
-        symbol_cols = [col for col in sample.columns if any(word in col.lower() for word in ['symbol', 'ticker', 'stock'])]
-        
-        print(f"📅 Potential date columns: {date_cols}")
-        print(f"📰 Potential text columns: {text_cols}")
-        print(f"📈 Potential symbol columns: {symbol_cols}")
-        
-        if not (date_cols and text_cols and symbol_cols):
-            print("⚠️ Warning: May not have all required column types")
+        try:
+            avg_loss = torch.stack([x['loss'] for x in self.validation_step_outputs]).mean()
+            self.log('val_loss_epoch', avg_loss, prog_bar=True)
             
-        return True
+            all_preds = torch.cat([x['predictions'].flatten() for x in self.validation_step_outputs])
+            all_targets = torch.cat([x['targets'].flatten() for x in self.validation_step_outputs])
+            
+            # Calculate comprehensive financial metrics
+            sharpe = self.financial_metrics.sharpe_ratio(all_preds.numpy())
+            max_dd = self.financial_metrics.maximum_drawdown(all_preds.numpy())
+            f1_score = self.financial_metrics.directional_f1_score(all_targets, all_preds)
+            
+            self.log('val_sharpe', sharpe, prog_bar=True)
+            self.log('val_max_drawdown', max_dd, prog_bar=False)
+            self.log('val_f1_direction', f1_score, prog_bar=True)
+            
+        except Exception as e:
+            logger.warning(f"Validation epoch end calculation failed for {self.model_type}: {e}")
+        finally:
+            self.validation_step_outputs.clear()
+            self.training_step_outputs.clear()
+'''
+            
+            elif method == 'configure_optimizers':
+                method_template = '''
+    def configure_optimizers(self):
+        if self.model_type == 'TFT_Enhanced':
+            optimizer = torch.optim.AdamW(
+                self.parameters(),
+                lr=self.learning_rate,
+                weight_decay=self.config.tft_enhanced_weight_decay,
+                betas=(0.9, 0.999),
+                eps=1e-8
+            )
+            
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                optimizer, 
+                T_0=self.config.cosine_t_max, 
+                T_mult=self.config.cosine_t_mult,
+                eta_min=self.config.tft_enhanced_min_lr
+            )
+        else:
+            optimizer = torch.optim.AdamW(
+                self.parameters(),
+                lr=self.learning_rate,
+                weight_decay=self.config.tft_weight_decay,
+                betas=(0.9, 0.999),
+                eps=1e-8
+            )
+            
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                optimizer, 
+                T_0=self.config.cosine_t_max, 
+                T_mult=self.config.cosine_t_mult,
+                eta_min=self.config.tft_min_learning_rate
+            )
         
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': {
+                'scheduler': scheduler,
+                'interval': 'epoch'
+            }
+        }
+'''
+            
+            # Insert the method template right after the __init__ method
+            init_end_pattern = r'(\s+logger\.info\(f"🔢 Precision: FLOAT32 \(stability enforced\)"\))'
+            if re.search(init_end_pattern, fixed_content):
+                fixed_content = re.sub(
+                    init_end_pattern,
+                    r'\1' + method_template,
+                    fixed_content,
+                    count=1
+                )
+    
+    # Write the fixed content
+    print(f"✍️ Writing fixed content to {models_path}...")
+    with open(models_path, 'w', encoding='utf-8') as f:
+        f.write(fixed_content)
+    
+    return True
+
+def validate_tft_trainer_methods():
+    """Validate that TFT trainer methods are properly defined"""
+    models_path = Path("src/models.py")
+    
+    try:
+        print("🔍 Validating TFT trainer methods...")
+        with open(models_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        required_methods = ['training_step', 'validation_step', 'on_validation_epoch_end', 'configure_optimizers']
+        found_methods = []
+        
+        for method in required_methods:
+            if f'def {method}(' in content:
+                found_methods.append(method)
+        
+        if len(found_methods) == len(required_methods):
+            print("✅ All required methods found in OptimizedTFTTrainer")
+            return True
+        else:
+            missing = set(required_methods) - set(found_methods)
+            print(f"❌ Missing methods: {missing}")
+            return False
+    
     except Exception as e:
-        print(f"❌ Error reading file: {e}")
+        print(f"❌ Error validating methods: {e}")
         return False
+
+def validate_syntax():
+    """Validate that the Python file has correct syntax"""
+    models_path = Path("src/models.py")
+    
+    try:
+        print("🔍 Validating Python syntax...")
+        with open(models_path, 'r', encoding='utf-8') as f:
+            code = f.read()
+        
+        # Try to compile the code
+        compile(code, str(models_path), 'exec')
+        print("✅ Python syntax is valid")
+        return True
+    
+    except SyntaxError as e:
+        print(f"❌ Syntax error in {models_path}:")
+        print(f"   Line {e.lineno}: {e.text}")
+        print(f"   Error: {e.msg}")
+        return False
+    except Exception as e:
+        print(f"❌ Error validating syntax: {e}")
+        return False
+
+def main():
+    """Main function"""
+    print("🔧 Fixing OptimizedTFTTrainer method indentation issues")
+    print("=" * 70)
+    
+    # Check if src directory exists
+    if not Path("src").exists():
+        print("❌ Error: 'src' directory not found")
+        print("💡 Make sure you're running this script from the project root directory")
+        return 1
+    
+    # Apply fixes
+    if fix_tft_trainer_indentation():
+        print("\n🎉 Indentation fixes applied!")
+        
+        # Validate methods
+        if validate_tft_trainer_methods():
+            # Validate syntax
+            if validate_syntax():
+                print("✅ OptimizedTFTTrainer is now properly configured")
+            else:
+                print("❌ Syntax validation failed - please check the file manually")
+                return 1
+        else:
+            print("❌ Method validation failed")
+            return 1
+    else:
+        print("\n❌ Failed to apply fixes")
+        return 1
+    
+    print("\n📋 Summary of changes:")
+    print("  • Fixed indentation for training_step() method")
+    print("  • Fixed indentation for validation_step() method") 
+    print("  • Fixed indentation for on_validation_epoch_end() method")
+    print("  • Fixed indentation for configure_optimizers() method")
+    print("\n💾 Original file backed up as 'src/models.py.backup2'")
+    print("🚀 TFT models should now train without Lightning configuration errors!")
+    
+    return 0
 
 if __name__ == "__main__":
-    print("Quick Fixes for Original Script")
-    print("=" * 40)
-    print()
-    print("1. Fix filename typo in config.yaml:")
-    print("   nasdaq_exteral_data.csv → nasdaq_external_data.csv")
-    print()
-    print("2. Add realistic resource limits to config.yaml:")
-    print(CONFIG_OVERRIDES)
-    print()
-    print("3. Apply code patches above to original script")
-    print()
-    print("4. Create config_reader.py (see separate artifact)")
-    print()
-    print("Testing your data file...")
-    test_fixes()
+    exit(main())

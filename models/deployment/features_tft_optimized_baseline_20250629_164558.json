@@ -1,0 +1,100 @@
+{
+  "features": [
+    "low",
+    "volume",
+    "rsi_14",
+    "rsi_21",
+    "macd_line",
+    "macd_signal",
+    "bb_width",
+    "bb_position",
+    "atr",
+    "volatility_20d",
+    "year",
+    "month",
+    "quarter",
+    "log_returns",
+    "intraday_return",
+    "macd_diff",
+    "stoch_d",
+    "volume_sma_20",
+    "rsi_14_lag_2",
+    "volume_lag_1",
+    "volume_lag_2",
+    "volume_lag_3",
+    "volume_lag_5",
+    "volume_lag_10",
+    "returns_lag_1",
+    "returns_lag_2",
+    "returns_lag_3",
+    "returns_lag_5",
+    "returns_lag_10",
+    "vwap_lag_3",
+    "day_of_year_sin",
+    "day_of_year_cos",
+    "trading_day_of_month"
+  ],
+  "feature_types": {
+    "price_features": [
+      "low",
+      "log_returns",
+      "intraday_return",
+      "returns_lag_1",
+      "returns_lag_2",
+      "returns_lag_3",
+      "returns_lag_5",
+      "returns_lag_10",
+      "vwap_lag_3"
+    ],
+    "volume_features": [
+      "volume",
+      "volume_sma_20",
+      "volume_lag_1",
+      "volume_lag_2",
+      "volume_lag_3",
+      "volume_lag_5",
+      "volume_lag_10"
+    ],
+    "technical_features": [
+      "rsi_14",
+      "rsi_21",
+      "macd_line",
+      "macd_signal",
+      "bb_width",
+      "bb_position",
+      "atr",
+      "volatility_20d",
+      "macd_diff",
+      "rsi_14_lag_2"
+    ],
+    "sentiment_features": [],
+    "temporal_decay_features": [],
+    "other_features": [
+      "year",
+      "month",
+      "quarter",
+      "stoch_d",
+      "day_of_year_sin",
+      "day_of_year_cos",
+      "trading_day_of_month"
+    ]
+  },
+  "target": "target_5",
+  "preprocessing_steps": [
+    "Load data with pandas",
+    "Handle missing values (fill with 0)",
+    "Apply RobustScaler to features",
+    "Apply RobustScaler to target",
+    "Prepare time series dataset",
+    "Make predictions",
+    "Inverse transform predictions"
+  ],
+  "inference_steps": [
+    "1. Load model and scalers",
+    "2. Preprocess input data (same as training)",
+    "3. Create sequences (LSTM) or time series format (TFT)",
+    "4. Run model inference",
+    "5. Inverse transform predictions",
+    "6. Return results"
+  ]
+}
