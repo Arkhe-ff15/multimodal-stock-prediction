@@ -19,7 +19,7 @@ ULTIMATE TFT PERFORMANCE FINANCIAL MODELING FRAMEWORK
 
 💰 RESOURCE PHILOSOPHY: NO LIMITS - MAXIMUM PERFORMANCE PRIORITY
 
-Version: 5.0 (ULTIMATE TFT PERFORMANCE)
+Version: 5.0 (ULTIMATE TFT PERFORMANCE) - PANDAS COMPATIBLE
 Date: June 30, 2025
 Author: Financial ML Research Team
 """
@@ -1524,14 +1524,14 @@ if TFT_AVAILABLE:
                 else:
                     df['symbol'] = 'DEFAULT'
                 
-                # Enhanced data cleaning
+                # Enhanced data cleaning - FIXED PANDAS COMPATIBILITY
                 numeric_columns = df.select_dtypes(include=[np.number]).columns
                 
                 # Replace infinite values with NaN first
                 df[numeric_columns] = df[numeric_columns].replace([np.inf, -np.inf], np.nan)
                 
-                # Fill NaN values with forward fill then backward fill
-                df[numeric_columns] = df[numeric_columns].fillna(method='ffill').fillna(method='bfill').fillna(0)
+                # Fill NaN values with forward fill then backward fill - PANDAS COMPATIBLE
+                df[numeric_columns] = df[numeric_columns].ffill().bfill().fillna(0)
                 
                 processed_splits.append(df)
             
@@ -2162,7 +2162,7 @@ class OptimizedFinancialModelFramework:
             directory.mkdir(parents=True, exist_ok=True)
         
         logger.info("🚀 ULTIMATE Financial Model Framework (TFT-FOCUSED) initialized")
-        logger.info("🎯 Models: TFT Enhanced (144) > TFT Baseline (64) > LSTM (48)")
+        logger.info("🎯 Models: TFT Enhanced (128) > TFT Baseline (80) > LSTM (48)")
         logger.info("📊 Target Metrics: RMSE, MAE, R², MAPE/SMAPE, Directional Accuracy, Sharpe Ratio")
         logger.info("💾 Auto-deployment: Models saved for production use")
         MemoryMonitor.log_memory_status()
@@ -2283,9 +2283,9 @@ class OptimizedFinancialModelFramework:
                                 'hidden_continuous_size': model.hidden_continuous_size,
                                 'quantiles': self.config.quantiles,
                                 'max_encoder_length': (self.config.tft_max_encoder_length if 'Baseline' in model_type 
-                                                     else 80),  # Enhanced uses longer context
+                                                     else 90),  # Enhanced uses longer context
                                 'max_prediction_length': (self.config.tft_max_prediction_length if 'Baseline' in model_type 
-                                                         else 15),  # Enhanced uses optimized prediction length
+                                                         else 18),  # Enhanced uses optimized prediction length
                             },
                             'training_config': {
                                 'target': 'target_5',
@@ -2895,8 +2895,8 @@ class OptimizedFinancialModelFramework:
         logger.info("🎯 HIERARCHY TARGET: TFT Enhanced > TFT Baseline > LSTM")
         logger.info("📊 TARGET METRICS: RMSE, MAE, R², MAPE/SMAPE, Directional Accuracy, Sharpe Ratio")
         logger.info("🔧 ULTIMATE OPTIMIZATIONS:")
-        logger.info("   • TFT Enhanced: 144 hidden units, 600 epochs, advanced features")
-        logger.info("   • TFT Baseline: 64 hidden units, 200 epochs, core features")
+        logger.info("   • TFT Enhanced: 128 hidden units, 400 epochs, advanced features")
+        logger.info("   • TFT Baseline: 80 hidden units, 250 epochs, core features")
         logger.info("   • LSTM: 48 hidden units, 150 epochs, competitive baseline")
         logger.info("💾 Auto-deployment: All models saved for production")
         logger.info("=" * 70)
